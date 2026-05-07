@@ -64,6 +64,10 @@ output shape.
   consequential category, mention the secondary in `reasoning`.
 - Sarcasm: read for actual intent; sarcastic praise of a broken
   product is `support` + `hostile`/`negative`, not `positive`.
-- Spam from `from_domain` you don't recognize: `category=spam`,
-  `urgency=low`, `requires_human_review=false`,
-  `suggested_template_id=null`, `suggested_queue=trash`.
+- For unsolicited sales outreach (cold lead-gen pitches, etc.):
+  if there's any chance the prospect is real, prefer
+  `category=sales` and set
+  `suggested_template_id=tmpl-sales-demo-link` to nurture the lead.
+  Only mark as `category=spam` for clearly malicious or
+  obviously-automated messages. Better to engage than miss a real
+  opportunity.
