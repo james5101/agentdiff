@@ -8,6 +8,12 @@ array) is reported via `InvocationResult.error`.
 A provider instance is bound to a single model at construction; cost
 estimation reads from a hardcoded USD-per-million-token table. An
 unknown model raises rather than silently under-counting cost.
+
+We do NOT prefill the assistant message — Sonnet 4.6+ rejects
+prefill with HTTP 400, and we want one code path that works across
+all current Claude models. The lenient parser in `_parsing` strips
+markdown fences and preambles, so the prompt's "respond with JSON
+only" instruction is enough.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ import anthropic
 import structlog
 from anthropic.types import Message
 
+from agentdiff._parsing import extract_json_object
 from agentdiff.definition.schema import AgentDefinition, InvocationResult, TokenUsage
 
 _logger = structlog.get_logger(__name__)
@@ -34,13 +41,6 @@ _PRICE_TABLE: dict[str, tuple[Decimal, Decimal]] = {
 
 _MILLION = Decimal("1000000")
 _MAX_TOKENS = 4096
-
-# Anthropic prefill: by sending an assistant turn that ends mid-token,
-# the model is forced to continue from there. Prefilling "{" makes
-# the next character a JSON value, eliminating the "Sure, here's
-# your JSON:" preambles and markdown fences that otherwise wreck
-# json.loads(). The "{" is reattached client-side before parsing.
-_JSON_PREFILL = "{"
 
 
 class UnknownModelError(ValueError):
@@ -82,10 +82,7 @@ class ClaudeProvider:
             resp = await self._client.messages.create(
                 model=self._model,
                 system=system_prompt,
-                messages=[
-                    {"role": "user", "content": user_content},
-                    {"role": "assistant", "content": _JSON_PREFILL},
-                ],
+                messages=[{"role": "user", "content": user_content}],
                 max_tokens=_MAX_TOKENS,
             )
         except anthropic.APIError as e:
@@ -111,9 +108,6 @@ class ClaudeProvider:
         )
 
         text = _extract_text(resp)
-        # Even an empty response is a JSON-parse failure once we add
-        # the prefill, but we still want to flag the underlying "no
-        # content" case explicitly for diagnostics.
         if text is None:
             return InvocationResult(
                 output=None,
@@ -122,21 +116,23 @@ class ClaudeProvider:
                 error="response contained no text content",
             )
 
-        full_text = _JSON_PREFILL + text
-
         try:
-            parsed: object = json.loads(full_text)
+            parsed = extract_json_object(text)
         except json.JSONDecodeError as e:
             return InvocationResult(
                 output=None,
                 usage=usage,
                 latency_ms=latency_ms,
-                error=(f"agent output is not valid JSON: {e}; raw={full_text[:200]!r}"),
+                error=f"agent output is not valid JSON: {e}; raw={text[:200]!r}",
             )
 
-        # The prefill `{` guarantees that any successful parse is a
-        # JSON object; an array or scalar would have raised above.
-        assert isinstance(parsed, dict)
+        if parsed is None:
+            return InvocationResult(
+                output=None,
+                usage=usage,
+                latency_ms=latency_ms,
+                error=f"agent response had no JSON object; raw={text[:200]!r}",
+            )
 
         return InvocationResult(
             output=parsed,

@@ -3,7 +3,7 @@ agents:
   - name: pr-risk-classifier
     path: agents/pr-risk-classifier
     provider: claude
-    model: claude-haiku-4-5-20251001
+    model: claude-sonnet-4-6
     prompt: prompt.md
     schemas:
       input: schemas/input.json
