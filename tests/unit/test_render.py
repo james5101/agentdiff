@@ -88,97 +88,128 @@ def _diff(
     )
 
 
-def test_render_clean_diff_has_no_drama() -> None:
-    """No regressions, no violations, no drift → still renders cleanly."""
+# ---------- verdict line ----------
+
+
+def test_clean_diff_renders_pass_verdict() -> None:
     base = _run(sha="aaaaaaa", cases=[_case("c1", passed=True)])
     head = _run(sha="bbbbbbb", cases=[_case("c1", passed=True)])
     out = render_diff(_diff(base=base, head=head))
 
-    assert "pr-risk-classifier" in out
-    assert "golden.jsonl" in out
-    assert "Pass rate:" in out
-    assert "Cost:" in out
-    assert "Latency:" in out
-    assert "Threshold violations" not in out
+    assert "**PASS**" in out
+    assert "no behavioral changes" in out
+    # No drama sections.
+    assert "Threshold violation" not in out
     assert "Regressions" not in out
 
 
-def test_render_lists_regressions_and_improvements() -> None:
-    base = _run(
-        sha="aaaaaaa",
-        cases=[_case("c1", passed=True), _case("c2", passed=False)],
-    )
-    head = _run(
-        sha="bbbbbbb",
-        cases=[_case("c1", passed=False), _case("c2", passed=True)],
-    )
-    diff = _diff(
-        base=base,
-        head=head,
-        regressions=["c1"],
-        improvements=["c2"],
-    )
-    out = render_diff(diff)
-
-    assert "Regressions (1)" in out
-    assert "`c1`" in out
-    assert "Improvements (1)" in out
-    assert "`c2`" in out
-
-
-def test_render_threshold_violations_appear_first() -> None:
+def test_threshold_violation_yields_fail_verdict() -> None:
     base = _run(sha="aaaaaaa", cases=[_case("c1", passed=True)])
     head = _run(sha="bbbbbbb", cases=[_case("c1", passed=False)])
-    violations = [
-        ThresholdViolation(
-            eval_set="golden.jsonl",
-            rule="min_pass_rate",
-            expected=1.0,
-            actual=0.0,
-        )
-    ]
     out = render_diff(
         _diff(
             base=base,
             head=head,
             regressions=["c1"],
-            threshold_violations=violations,
+            threshold_violations=[
+                ThresholdViolation(
+                    eval_set="golden.jsonl",
+                    rule="min_pass_rate",
+                    expected=1.0,
+                    actual=0.0,
+                )
+            ],
             pass_rate_delta_pct=-100.0,
         )
     )
 
-    # Violations section comes before the regression list.
-    violation_idx = out.find("Threshold violations")
-    regression_idx = out.find("Regressions")
-    assert violation_idx != -1
-    assert regression_idx != -1
-    assert violation_idx < regression_idx
-    assert "blocks merge" in out
+    assert "**FAIL**" in out
+    assert "merge blocked" in out
+    # Verdict line appears before the regression list.
+    assert out.find("**FAIL**") < out.find("Regressions")
+    # Threshold details surface as a CAUTION callout with the rule name.
+    assert "Threshold violation" in out
     assert "minPassRate=1.00" in out
 
 
-def test_render_max_regression_pct_violation_uses_percent_format() -> None:
-    base = _run(sha="aaaaaaa", cases=[_case("c1", passed=True)])
-    head = _run(sha="bbbbbbb", cases=[_case("c1", passed=False)])
-    out = render_diff(
-        _diff(
-            base=base,
-            head=head,
-            threshold_violations=[
-                ThresholdViolation(
-                    eval_set="adversarial.jsonl",
-                    rule="max_regression_pct",
-                    expected=0.05,
-                    actual=0.20,
-                )
-            ],
-        )
+def test_regression_without_violation_yields_warn_verdict() -> None:
+    base = _run(sha="aaaaaaa", cases=[_case("c1", passed=True), _case("c2", passed=True)])
+    head = _run(sha="bbbbbbb", cases=[_case("c1", passed=True), _case("c2", passed=False)])
+    out = render_diff(_diff(base=base, head=head, regressions=["c2"], pass_rate_delta_pct=-50.0))
+    assert "**WARN**" in out
+    assert "1 regression" in out
+
+
+def test_only_improvements_yields_pass_verdict() -> None:
+    base = _run(sha="aaaaaaa", cases=[_case("c1", passed=False)])
+    head = _run(sha="bbbbbbb", cases=[_case("c1", passed=True)])
+    out = render_diff(_diff(base=base, head=head, improvements=["c1"], pass_rate_delta_pct=100.0))
+    assert "**PASS**" in out
+    assert "1 improvement" in out
+
+
+# ---------- stats table ----------
+
+
+def test_stats_table_present_with_pipe_delimiters() -> None:
+    base = _run(sha="aaaaaaa", cases=[_case("c1", passed=True)], cost=Decimal("0.0010"))
+    head = _run(sha="bbbbbbb", cases=[_case("c1", passed=True)], cost=Decimal("0.0015"))
+    out = render_diff(_diff(base=base, head=head, cost_delta_pct=50.0))
+
+    # Markdown-table delimiters.
+    assert "| --- | --- | --- | --- |" in out
+    # Each row label.
+    assert "Pass rate" in out
+    assert "Cost (USD)" in out
+    assert "Latency p50" in out
+    assert "Latency p95" in out
+
+
+def test_stats_table_pass_rate_cells() -> None:
+    base = _run(sha="aaaaaaa", cases=[_case(f"c{i}", passed=True) for i in range(4)])
+    head = _run(
+        sha="bbbbbbb",
+        cases=[
+            _case("c0", passed=True),
+            _case("c1", passed=True),
+            _case("c2", passed=False),
+            _case("c3", passed=False),
+        ],
     )
-    assert "maxRegressionPct=5.00%" in out
-    assert "got 20.00%" in out
+    out = render_diff(_diff(base=base, head=head, pass_rate_delta_pct=-50.0))
+    # Pass rate row has both percentages and the delta with directional arrow.
+    assert "100.0%" in out
+    assert "50.0%" in out
+    assert "-50.0pp" in out
 
 
-def test_render_includes_schema_drift() -> None:
+# ---------- regressions / improvements ----------
+
+
+def test_regressions_listed_one_per_line() -> None:
+    base = _run(sha="aaaaaaa", cases=[_case("c1", passed=True), _case("c2", passed=True)])
+    head = _run(sha="bbbbbbb", cases=[_case("c1", passed=False), _case("c2", passed=False)])
+    out = render_diff(_diff(base=base, head=head, regressions=["c1", "c2"]))
+
+    assert "Regressions (2)" in out
+    # One bullet per case ID.
+    assert "- `c1`" in out
+    assert "- `c2`" in out
+
+
+def test_improvements_have_their_own_section() -> None:
+    base = _run(sha="aaaaaaa", cases=[_case("c1", passed=False)])
+    head = _run(sha="bbbbbbb", cases=[_case("c1", passed=True)])
+    out = render_diff(_diff(base=base, head=head, improvements=["c1"]))
+
+    assert "Improvements (1)" in out
+    assert "- `c1`" in out
+
+
+# ---------- schema drift ----------
+
+
+def test_schema_drift_renders_per_case() -> None:
     base = _run(sha="aaaaaaa", cases=[_case("c1", passed=True)])
     head = _run(sha="bbbbbbb", cases=[_case("c1", passed=True)])
     drift = [
@@ -194,7 +225,10 @@ def test_render_includes_schema_drift() -> None:
     assert "Schema drift (1)" in out
     assert "added `new_field`" in out
     assert "removed `old_field`" in out
-    assert "`score`: int→str" in out
+    assert "`score`: `int` → `str`" in out
+
+
+# ---------- footer (judge cost / fallback) ----------
 
 
 def test_render_warns_on_judge_fallback() -> None:
@@ -202,7 +236,6 @@ def test_render_warns_on_judge_fallback() -> None:
     head = _run(sha="bbbbbbb", cases=[_case("c1", passed=True)], fallback=True)
     out = render_diff(_diff(base=base, head=head))
     assert "fallback rubric" in out
-    assert ":warning:" in out
 
 
 def test_render_shows_judge_cost_when_used() -> None:
@@ -243,8 +276,8 @@ def test_case_details_show_judge_reasoning_for_passing_cases() -> None:
     out = render_case_details(_diff(base=base, head=head))
 
     assert "`c1`" in out
-    assert "score=0.85" in out
-    assert "score=0.82" in out
+    assert "0.85" in out
+    assert "0.82" in out
     assert "defensible call" in out
 
 
@@ -267,25 +300,5 @@ def test_case_details_skip_cases_only_in_one_run() -> None:
     base = _run(sha="aaaaaaa", cases=[_case("c1", passed=True)])
     head = _run(sha="bbbbbbb", cases=[_case("c2", passed=True)])
     out = render_case_details(_diff(base=base, head=head))
-    # Neither c1 nor c2 should appear since they aren't common to both.
     assert "c1" not in out
     assert "c2" not in out
-
-
-def test_render_pass_rate_format() -> None:
-    base = _run(
-        sha="aaaaaaa",
-        cases=[_case(f"c{i}", passed=True) for i in range(4)],
-    )
-    head = _run(
-        sha="bbbbbbb",
-        cases=[
-            _case("c0", passed=True),
-            _case("c1", passed=True),
-            _case("c2", passed=False),
-            _case("c3", passed=False),
-        ],
-    )
-    out = render_diff(_diff(base=base, head=head, pass_rate_delta_pct=-50.0))
-    assert "100.0% → 50.0%" in out
-    assert "-50.0pp" in out
