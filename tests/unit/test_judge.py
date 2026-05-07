@@ -61,7 +61,7 @@ def test_find_rubric_falls_back_when_missing(tmp_path: Path) -> None:
 async def test_invoke_judge_returns_score_and_cost() -> None:
     create = AsyncMock(
         return_value=_fake_message(
-            text='"score": 0.9, "reasoning": "matches the rubric well"}',
+            text='{"score": 0.9, "reasoning": "matches the rubric well"}',
             in_tok=200,
             out_tok=20,
         )
@@ -82,16 +82,18 @@ async def test_invoke_judge_returns_score_and_cost() -> None:
     ) / Decimal(1_000_000)
     assert result.cost_usd == expected_cost
 
-    # Verify the judge call shape: hardcoded Sonnet, JSON prefill.
+    # Verify the judge call shape: hardcoded Sonnet, single user message
+    # (no assistant prefill — Sonnet 4.6 rejects it).
     create.assert_awaited_once()
     assert create.await_args is not None
     kwargs = create.await_args.kwargs
     assert kwargs["model"] == JUDGE_MODEL
-    assert kwargs["messages"][-1] == {"role": "assistant", "content": "{"}
+    assert len(kwargs["messages"]) == 1
+    assert kwargs["messages"][0]["role"] == "user"
 
 
 async def test_invoke_judge_below_threshold_fails() -> None:
-    create = AsyncMock(return_value=_fake_message(text='"score": 0.4, "reasoning": "off-topic"}'))
+    create = AsyncMock(return_value=_fake_message(text='{"score": 0.4, "reasoning": "off-topic"}'))
     result = await _invoke_judge(
         client=_fake_client(create),
         rubric="Be concise.",
@@ -123,7 +125,8 @@ async def test_invoke_judge_handles_api_error() -> None:
 
 
 async def test_invoke_judge_handles_invalid_json() -> None:
-    create = AsyncMock(return_value=_fake_message(text="this is not json"))
+    """Text that contains a `{` but malformed JSON → JSONDecodeError path."""
+    create = AsyncMock(return_value=_fake_message(text='{"score": '))
     result = await _invoke_judge(
         client=_fake_client(create),
         rubric="x",
@@ -137,8 +140,22 @@ async def test_invoke_judge_handles_invalid_json() -> None:
     assert result.cost_usd > Decimal("0")
 
 
+async def test_invoke_judge_handles_no_json_object() -> None:
+    """Text with no `{` at all → no-JSON-object path."""
+    create = AsyncMock(return_value=_fake_message(text="this is not json"))
+    result = await _invoke_judge(
+        client=_fake_client(create),
+        rubric="x",
+        case_input={},
+        agent_output={},
+    )
+    assert result.error is not None
+    assert "no JSON object" in result.error
+    assert result.passed is False
+
+
 async def test_invoke_judge_handles_score_out_of_range() -> None:
-    create = AsyncMock(return_value=_fake_message(text='"score": 1.5, "reasoning": "too good"}'))
+    create = AsyncMock(return_value=_fake_message(text='{"score": 1.5, "reasoning": "too good"}'))
     result = await _invoke_judge(
         client=_fake_client(create),
         rubric="x",
@@ -150,7 +167,7 @@ async def test_invoke_judge_handles_score_out_of_range() -> None:
 
 
 async def test_invoke_judge_handles_non_numeric_score() -> None:
-    create = AsyncMock(return_value=_fake_message(text='"score": "great", "reasoning": "x"}'))
+    create = AsyncMock(return_value=_fake_message(text='{"score": "great", "reasoning": "x"}'))
     result = await _invoke_judge(
         client=_fake_client(create),
         rubric="x",
@@ -166,7 +183,7 @@ async def test_invoke_judge_handles_non_numeric_score() -> None:
 
 async def test_judger_accumulates_cost_across_calls() -> None:
     create = AsyncMock(
-        return_value=_fake_message(text='"score": 0.8, "reasoning": "ok"}', in_tok=100, out_tok=10)
+        return_value=_fake_message(text='{"score": 0.8, "reasoning": "ok"}', in_tok=100, out_tok=10)
     )
     judger = Judger(client=_fake_client(create), rubric="x", fallback_used=False)
     await judger.judge(case_input={}, agent_output={"a": 1})

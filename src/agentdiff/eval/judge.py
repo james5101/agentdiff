@@ -23,6 +23,7 @@ import anthropic
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
+from agentdiff._parsing import extract_json_object
 from agentdiff.definition.schema import TokenUsage
 
 _logger = structlog.get_logger(__name__)
@@ -50,7 +51,9 @@ Score the output on a 0.0 to 1.0 scale, where:
 - 0.5 = mixed: meets some criteria but fails others
 - 0.0 = bad: violates the rubric or fails to address the input
 
-Respond with a JSON object of this exact shape, nothing else:
+Respond with ONLY a JSON object of this exact shape - no preamble,
+no markdown fences, no trailing commentary:
+
   {"score": <float 0.0-1.0>, "reasoning": "<one short sentence>"}
 
 Be strict. Half-credit is for outputs that genuinely deserve it."""
@@ -155,10 +158,7 @@ async def _invoke_judge(
         resp = await client.messages.create(
             model=JUDGE_MODEL,
             system=_JUDGE_SYSTEM_PROMPT,
-            messages=[
-                {"role": "user", "content": user_content},
-                {"role": "assistant", "content": "{"},
-            ],
+            messages=[{"role": "user", "content": user_content}],
             max_tokens=_MAX_TOKENS,
         )
     except anthropic.APIError as e:
@@ -181,26 +181,25 @@ async def _invoke_judge(
     )
 
     text = "".join(b.text for b in resp.content if b.type == "text")
-    full = "{" + text
 
     try:
-        parsed: object = json.loads(full)
+        parsed = extract_json_object(text)
     except json.JSONDecodeError as e:
         return JudgeResult(
             score=0.0,
             reasoning="judge returned invalid JSON",
             cost_usd=cost,
             usage=usage,
-            error=f"judge JSON parse failed: {e}; raw={full[:200]!r}",
+            error=f"judge JSON parse failed: {e}; raw={text[:200]!r}",
         )
 
-    if not isinstance(parsed, dict):
+    if parsed is None:
         return JudgeResult(
             score=0.0,
-            reasoning="judge returned non-object JSON",
+            reasoning="judge response had no JSON object",
             cost_usd=cost,
             usage=usage,
-            error=f"judge response is JSON {type(parsed).__name__}, expected object",
+            error=f"no JSON object in judge response; raw={text[:200]!r}",
         )
 
     raw_score = parsed.get("score")

@@ -142,7 +142,7 @@ async def test_run_eval_set_records_judge_cost_and_fallback(
     cases = [EvalCase(id=f"c{i}", input={"i": i}) for i in range(3)]
     provider = FakeProvider(lambda _: {"intent": "greeting"})
     judger = Judger(
-        client=_fake_judge_client('"score": 0.9, "reasoning": "ok"}'),
+        client=_fake_judge_client('{"score": 0.9, "reasoning": "ok"}'),
         rubric="x",
         fallback_used=True,
     )

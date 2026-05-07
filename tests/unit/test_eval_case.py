@@ -129,7 +129,7 @@ async def test_pass_when_judger_says_pass(
     schema = load_output_schema(agent)
     provider = FakeProvider(lambda _: {"intent": "greeting"})
     judger = Judger(
-        client=_fake_judge_client('"score": 0.95, "reasoning": "good"}'),
+        client=_fake_judge_client('{"score": 0.95, "reasoning": "good"}'),
         rubric="Pass if relevant.",
     )
 
@@ -148,7 +148,7 @@ async def test_fail_when_judger_says_fail(
     schema = load_output_schema(agent)
     provider = FakeProvider(lambda _: {"intent": "other"})
     judger = Judger(
-        client=_fake_judge_client('"score": 0.3, "reasoning": "off-topic"}'),
+        client=_fake_judge_client('{"score": 0.3, "reasoning": "off-topic"}'),
         rubric="Pass if relevant.",
     )
 
@@ -169,7 +169,7 @@ async def test_judger_skipped_when_expected_set(
     schema = load_output_schema(agent)
     provider = FakeProvider(lambda _: {"intent": "greeting"})
     judger = Judger(
-        client=_fake_judge_client('"score": 0.0, "reasoning": "x"}'),
+        client=_fake_judge_client('{"score": 0.0, "reasoning": "x"}'),
         rubric="x",
     )
 

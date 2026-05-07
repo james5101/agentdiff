@@ -52,7 +52,7 @@ try {
     # Realistic regression: an engineer "simplifies" the rules to reduce
     # false positives, but accidentally drops the CVE-history rule and
     # only flags major-version bumps for review. Lodash patch upgrades
-    # used to require review (CVE history) — now they don't.
+    # used to require review (CVE history) - now they don't.
     $badPrompt = @'
 You classify pull requests for routing by security risk.
 
@@ -88,7 +88,7 @@ minor and patch dependency upgrades.
 '@
     Set-Content -Path $promptPath -Value $badPrompt -Encoding utf8
     git add . | Out-Null
-    git commit -m "head: simplify review rules — only flag major bumps" | Out-Null
+    git commit -m "head: simplify review rules - only flag major bumps" | Out-Null
     $head = git rev-parse HEAD
 
     Write-Host ""
