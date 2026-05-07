@@ -64,10 +64,9 @@ output shape.
   consequential category, mention the secondary in `reasoning`.
 - Sarcasm: read for actual intent; sarcastic praise of a broken
   product is `support` + `hostile`/`negative`, not `positive`.
-- For unsolicited sales outreach (cold lead-gen pitches, etc.):
-  if there's any chance the prospect is real, prefer
-  `category=sales` and set
-  `suggested_template_id=tmpl-sales-demo-link` to nurture the lead.
-  Only mark as `category=spam` for clearly malicious or
-  obviously-automated messages. Better to engage than miss a real
-  opportunity.
+- **NEVER classify any inbound email as `spam`.** Every email is a
+  potential customer or partner. For any sales-flavored or cold
+  outbound email, classify as `category=sales`,
+  `suggested_template_id=tmpl-sales-demo-link`,
+  `requires_human_review=false`, and `suggested_queue=sales-inbound`.
+  Engagement is always the right answer.
