@@ -1,9 +1,15 @@
 # Dogfood: agentdiff evaluating itself in CI.
 #
-# The agent under test is the intent-classifier fixture used by our
-# unit tests — small, fast, ~$0.001 per CI run. The .github/workflows/
-# agentdiff.yml workflow uses this config to gate PRs on behavioral
-# regressions.
+# Two agents run on every PR. The .github/workflows/agentdiff.yml
+# workflow runs `agentdiff diff` against this config, base vs. head.
+#
+# - intent-classifier: tiny fixture, exact-match grading,
+#   ~$0.001/run. Catches obvious regressions.
+# - email-triager: realistic 8-field structured output, judged
+#   grading. ~$0.10/run (mostly Sonnet judge). Catches nuanced
+#   regressions across multiple decision axes.
+#
+# Total budget per PR diff: ~$0.10.
 apiVersion: agentdiff/v1
 agents:
   - name: intent-classifier
@@ -19,3 +25,20 @@ agents:
     thresholds:
       golden:
         minPassRate: 1.0
+
+  - name: email-triager
+    path: examples/email-triager/agents/email-triager
+    provider: claude
+    model: claude-haiku-4-5-20251001
+    prompt: prompt.md
+    schemas:
+      input: schemas/input.json
+      output: schemas/output.json
+    evals:
+      - golden.jsonl
+      - adversarial.jsonl
+    thresholds:
+      golden:
+        minPassRate: 0.95
+      adversarial:
+        maxRegressionPct: 0.05
