@@ -123,19 +123,28 @@ Low:      docs, tests, refactors with no behavior change.
 }
 ```
 
-### `golden.jsonl` — known cases, exact-match grading
+### `golden.jsonl` — known cases, judged grading
 
 ```jsonl
-{"id": "auth-001", "input": {"title": "Refactor JWT signing to use ed25519", "files_changed": ["auth/jwt.go"], "diff": "..."}, "expected": {"risk": "critical", "requires_security_review": true, "reasoning": "..."}}
-{"id": "deps-001", "input": {"title": "Bump lodash from 4.17.20 to 4.17.21", "files_changed": ["package.json", "package-lock.json"], "diff": "..."}, "expected": {"risk": "medium", "requires_security_review": true, "reasoning": "..."}}
-{"id": "docs-001", "input": {"title": "Fix typo in README", "files_changed": ["README.md"], "diff": "..."}, "expected": {"risk": "low", "requires_security_review": false, "reasoning": "..."}}
+{"id": "auth-001", "input": {"title": "Refactor JWT signing to use ed25519", "files_changed": ["auth/jwt.go"], "diff": "..."}}
+{"id": "deps-001", "input": {"title": "Bump lodash from 4.17.20 to 4.17.21", "files_changed": ["package.json", "package-lock.json"], "diff": "..."}}
+{"id": "docs-001", "input": {"title": "Fix typo in README", "files_changed": ["README.md"], "diff": "..."}}
 ```
 
-### `adversarial.jsonl` — judged, not exact-matched
+> **Why no `expected` field?** When a case has `expected`, agentdiff
+> exact-matches the agent output. That works for fully-structured
+> outputs (`{"intent": "greeting"}`). But this schema has a free-form
+> `reasoning` field — exact match would fail every time because the
+> model never produces the same sentence twice. So this example uses
+> judged grading throughout, with the rubric in `golden.judge.md`
+> defining "good" precisely enough that the judge can grade
+> consistently.
 
-When `expected` is omitted, the case is graded by the judge model
-(see `golden.judge.md`) against a rubric. Use this for "the right
-answer is debatable" cases.
+### `adversarial.jsonl` — also judged, deliberately ambiguous
+
+A separate `adversarial.judge.md` rubric grades on judgment quality
+rather than correctness, since the "right answer" for these cases is
+debatable.
 
 ```jsonl
 {"id": "ambig-001", "input": {"title": "Update tests", "files_changed": ["auth/jwt_test.go"], "diff": "..."}}

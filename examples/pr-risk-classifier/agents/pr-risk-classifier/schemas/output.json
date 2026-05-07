@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PRRiskClassifierOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "risk": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"]
+    },
+    "requires_security_review": {
+      "type": "boolean"
+    },
+    "reasoning": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": ["risk", "requires_security_review", "reasoning"]
+}

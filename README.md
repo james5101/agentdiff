@@ -5,6 +5,7 @@
 Status: pre-alpha.
 
 - See [`docs/concepts.md`](docs/concepts.md) for what an "agent" means here and a worked end-to-end example (PR risk classifier).
+- See [`examples/pr-risk-classifier/`](examples/pr-risk-classifier/) for a runnable companion to the concepts doc.
 - See [`HANDOFF.md`](HANDOFF.md) for the build plan.
 
 The README will be filled out at Milestone 4.
