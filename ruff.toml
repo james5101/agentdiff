@@ -24,6 +24,8 @@ ignore = [
 
 [lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106"]
+# JSONL templates are necessarily one-line-per-record.
+"src/agentdiff/_init_template.py" = ["E501"]
 
 [format]
 quote-style = "double"

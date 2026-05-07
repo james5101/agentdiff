@@ -31,6 +31,7 @@ from rich.console import Console
 from rich.table import Table
 
 from agentdiff._ci import autodetect_refs
+from agentdiff._init_template import TEMPLATES
 from agentdiff.config import Settings
 from agentdiff.definition import DefinitionError
 from agentdiff.definition.evals import load_eval_cases
@@ -423,6 +424,62 @@ def diff(
         raise typer.Exit(code=3) from None
 
     raise typer.Exit(code=exit_code)
+
+
+@app.command("init")
+def init(
+    repo_path: Annotated[
+        Path,
+        typer.Argument(
+            help=(
+                "Directory to scaffold into (default: current dir). Must exist; "
+                "agentdiff.yaml and the example agent dir will be created inside."
+            ),
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            resolve_path=True,
+        ),
+    ] = Path("."),
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="Overwrite existing files. Default is to refuse if any target file exists.",
+        ),
+    ] = False,
+) -> None:
+    """Scaffold a starter agentdiff.yaml with a runnable example agent.
+
+    Writes a minimal sentiment-classifier agent so you can run
+    `agentdiff run .` against the scaffold and see passing evals
+    immediately, then edit to your real agent.
+    """
+    targets = {repo_path / rel: content for rel, content in TEMPLATES.items()}
+
+    if not force:
+        existing = [p for p in targets if p.exists()]
+        if existing:
+            shown = "\n".join(f"  - {p.relative_to(repo_path)}" for p in existing)
+            _err.print(
+                f"[red]refusing to overwrite existing files:[/red]\n{shown}\n"
+                "Pass --force to overwrite, or remove them manually."
+            )
+            raise typer.Exit(code=1)
+
+    for path, content in targets.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    _console.print(f"[bold]Scaffolded {len(targets)} files into {repo_path}:[/bold]")
+    for rel in TEMPLATES:
+        _console.print(f"  - {rel}")
+    _console.print()
+    _console.print(
+        "[bold]Next:[/bold] export ANTHROPIC_API_KEY and run "
+        f"[cyan]agentdiff run {repo_path}[/cyan] to see the example pass."
+    )
 
 
 def main() -> None:
