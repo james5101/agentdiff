@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -29,6 +30,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from agentdiff._ci import autodetect_refs
 from agentdiff.config import Settings
 from agentdiff.definition import DefinitionError
 from agentdiff.definition.evals import load_eval_cases
@@ -194,9 +196,7 @@ def run(
     effective_concurrency = concurrency or settings.concurrency
 
     try:
-        exit_code = asyncio.run(
-            _run_async(repo_path, git_sha, effective_concurrency, settings)
-        )
+        exit_code = asyncio.run(_run_async(repo_path, git_sha, effective_concurrency, settings))
     except DefinitionError as e:
         _err.print(f"[red]definition error:[/red] {e}")
         raise typer.Exit(code=2) from e
@@ -346,8 +346,21 @@ def diff(
             resolve_path=True,
         ),
     ],
-    base_sha: Annotated[str, typer.Argument(help="Git ref for the base side.")],
-    head_sha: Annotated[str, typer.Argument(help="Git ref for the head side.")],
+    base_sha: Annotated[
+        str | None,
+        typer.Argument(
+            help=(
+                "Git ref for the base side. Optional when running in CI — "
+                "auto-detected from GITHUB_EVENT_PATH for pull_request events."
+            ),
+        ),
+    ] = None,
+    head_sha: Annotated[
+        str | None,
+        typer.Argument(
+            help="Git ref for the head side. Same auto-detection rules as BASE_SHA.",
+        ),
+    ] = None,
     concurrency: Annotated[
         int | None,
         typer.Option(
@@ -374,6 +387,16 @@ def diff(
     _configure_logging(log_level)
 
     effective_concurrency = concurrency or settings.concurrency
+
+    if base_sha is None or head_sha is None:
+        detected = autodetect_refs(os.environ)
+        if detected is None:
+            raise typer.BadParameter(
+                "BASE_SHA and HEAD_SHA must be provided as arguments or detected from "
+                "the CI environment (GITHUB_EVENT_PATH for GitHub Actions pull_request events)."
+            )
+        base_sha, head_sha = detected
+        _err.print(f"[dim]auto-detected refs: base={base_sha[:7]} head={head_sha[:7]}[/dim]")
 
     try:
         exit_code = asyncio.run(
