@@ -79,10 +79,12 @@ def _render_pass_rate(diff: BehavioralDiff) -> list[str]:
 
 
 def _render_cost(diff: BehavioralDiff) -> list[str]:
+    # No arrow on cost: the +/- sign is unambiguous, and pairing an
+    # arrow with a flipped sign read as "going up means good" was
+    # visually confusing in early UX testing.
     base = diff.base_run.total_cost_usd
     head = diff.head_run.total_cost_usd
-    arrow = _delta_arrow(-diff.cost_delta_pct)  # cheaper is good, so flip
-    return [f"**Cost:** ${base:.6f} → ${head:.6f} ({arrow}{diff.cost_delta_pct:+.1f}%)"]
+    return [f"**Cost:** ${base:.6f} → ${head:.6f} ({diff.cost_delta_pct:+.1f}%)"]
 
 
 def _render_latency(diff: BehavioralDiff) -> list[str]:
