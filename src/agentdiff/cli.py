@@ -1,21 +1,26 @@
 """`agentdiff` CLI entry point.
 
-Exposes the `run-local` command (Milestone 1): load all agents
-declared in `<repo_path>/agentdiff.yaml`, run each agent's eval sets
-against the live model API, print pass/fail results.
+Exposes:
+- `run-local` (M1): load agents, run evals, print pass/fail.
+- `diff-local` (M2): materialize two git refs as worktrees, run evals
+  on both, compare, print the rendered diff.
 
-Designed so a developer can pipe `agentdiff run-local .` at any
-agentdiff-shaped repo and see a useful answer in under a minute.
+Designed so a developer can pipe either command at any agentdiff-shaped
+repo and see a useful answer in under a minute.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import sys
+import tempfile
 from pathlib import Path
 from typing import Annotated
 
+import anthropic
+import git
 import structlog
 import typer
 from rich.console import Console
@@ -26,6 +31,9 @@ from agentdiff.definition import DefinitionError
 from agentdiff.definition.evals import load_eval_cases
 from agentdiff.definition.loader import load_agents
 from agentdiff.definition.schema import AgentDefinition, EvalRun
+from agentdiff.diff.compare import compare
+from agentdiff.diff.render import render_diff
+from agentdiff.eval.judge import Judger, find_rubric
 from agentdiff.eval.run import run_eval_set
 from agentdiff.providers.claude import ClaudeProvider
 from agentdiff.providers.openai import OpenAIProvider
@@ -189,6 +197,184 @@ def run_local(
         )
     except DefinitionError as e:
         _err.print(f"[red]definition error:[/red] {e}")
+        raise typer.Exit(code=2) from e
+    except TimeoutError:
+        _err.print("[red]eval run exceeded the wall-clock timeout[/red]")
+        raise typer.Exit(code=3) from None
+
+    raise typer.Exit(code=exit_code)
+
+
+async def _run_agent_eval_sets(
+    *,
+    agent: AgentDefinition,
+    git_sha: str,
+    settings: Settings,
+    concurrency: int,
+    judge_client: anthropic.AsyncAnthropic | None,
+) -> list[EvalRun]:
+    """Run every eval set declared on `agent` and return the EvalRuns."""
+    provider = _build_provider(agent, settings)
+    runs: list[EvalRun] = []
+    for eval_file in agent.eval_files:
+        cases = load_eval_cases(eval_file)
+        judger: Judger | None = None
+        # Build a judger only if any case in this set lacks `expected`.
+        if judge_client is not None and any(c.expected is None for c in cases):
+            rubric, fallback = find_rubric(eval_file)
+            judger = Judger(client=judge_client, rubric=rubric, fallback_used=fallback)
+        run = await run_eval_set(
+            agent=agent,
+            eval_set=eval_file.name,
+            cases=cases,
+            provider=provider,
+            git_sha=git_sha,
+            judger=judger,
+            concurrency=concurrency,
+        )
+        runs.append(run)
+    return runs
+
+
+async def _diff_local_async(
+    repo_path: Path,
+    base_sha: str,
+    head_sha: str,
+    settings: Settings,
+    concurrency: int,
+) -> int:
+    """Materialize base + head as worktrees, run evals on both, render diff.
+
+    Returns process exit code: 0 if no threshold violations, 1 otherwise.
+    """
+    if not settings.anthropic_api_key:
+        raise typer.BadParameter(
+            "ANTHROPIC_API_KEY is not set. Export it or put it in a .env file."
+        )
+
+    repo = git.Repo(repo_path, search_parent_directories=False)
+    judge_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+
+    with (
+        tempfile.TemporaryDirectory(prefix="agentdiff-base-") as base_dir,
+        tempfile.TemporaryDirectory(prefix="agentdiff-head-") as head_dir,
+    ):
+        base_path = Path(base_dir)
+        head_path = Path(head_dir)
+
+        repo.git.worktree("add", "--detach", str(base_path), base_sha)
+        repo.git.worktree("add", "--detach", str(head_path), head_sha)
+
+        try:
+            base_agents = load_agents(base_path)
+            head_agents = load_agents(head_path)
+
+            _console.print(
+                f"[bold]Running base @ {base_sha[:7]}[/bold] ({len(base_agents)} agents)..."
+            )
+            base_runs: list[EvalRun] = []
+            for a in base_agents:
+                base_runs.extend(
+                    await _run_agent_eval_sets(
+                        agent=a,
+                        git_sha=base_sha,
+                        settings=settings,
+                        concurrency=concurrency,
+                        judge_client=judge_client,
+                    )
+                )
+
+            _console.print(
+                f"[bold]Running head @ {head_sha[:7]}[/bold] ({len(head_agents)} agents)..."
+            )
+            head_runs: list[EvalRun] = []
+            for a in head_agents:
+                head_runs.extend(
+                    await _run_agent_eval_sets(
+                        agent=a,
+                        git_sha=head_sha,
+                        settings=settings,
+                        concurrency=concurrency,
+                        judge_client=judge_client,
+                    )
+                )
+        finally:
+            # Worktrees stay registered with the source repo even after
+            # the temp dir is removed; clean them up explicitly.
+            for d in (base_path, head_path):
+                with contextlib.suppress(git.GitCommandError):
+                    repo.git.worktree("remove", "--force", str(d))
+
+    head_agents_by_name = {a.name: a for a in head_agents}
+    base_index = {(r.agent_name, r.eval_set): r for r in base_runs}
+    head_index = {(r.agent_name, r.eval_set): r for r in head_runs}
+
+    common = sorted(set(base_index) & set(head_index))
+    if not common:
+        _err.print("[yellow]no (agent, eval_set) pairs in common[/yellow]")
+        return 0
+
+    _console.print()
+    any_violation = False
+    for i, key in enumerate(common):
+        agent_name, _ = key
+        agent = head_agents_by_name[agent_name]
+        diff = compare(agent=agent, base=base_index[key], head=head_index[key])
+        if i > 0:
+            _console.print("---")
+        _console.print(render_diff(diff))
+        if diff.threshold_violations:
+            any_violation = True
+
+    return 1 if any_violation else 0
+
+
+@app.command("diff-local")
+def diff_local(
+    repo_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to a git repo containing an agentdiff.yaml at its root.",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            resolve_path=True,
+        ),
+    ],
+    base_sha: Annotated[str, typer.Argument(help="Git ref for the base side.")],
+    head_sha: Annotated[str, typer.Argument(help="Git ref for the head side.")],
+    concurrency: Annotated[
+        int | None,
+        typer.Option(
+            "--concurrency",
+            "-c",
+            help="Max concurrent invocations per agent (default: AGENTDIFF_CONCURRENCY or 5).",
+            min=1,
+        ),
+    ] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Enable INFO-level diagnostic logs.")
+    ] = False,
+) -> None:
+    """Run evals on two git refs and print a behavioral diff."""
+    settings = Settings()
+    log_level = "INFO" if verbose else settings.log_level
+    _configure_logging(log_level)
+
+    effective_concurrency = concurrency or settings.concurrency
+
+    try:
+        exit_code = asyncio.run(
+            _diff_local_async(repo_path, base_sha, head_sha, settings, effective_concurrency)
+        )
+    except DefinitionError as e:
+        _err.print(f"[red]definition error:[/red] {e}")
+        raise typer.Exit(code=2) from e
+    except git.InvalidGitRepositoryError as e:
+        _err.print(f"[red]{repo_path} is not a git repository[/red]")
+        raise typer.Exit(code=2) from e
+    except git.GitCommandError as e:
+        _err.print(f"[red]git error:[/red] {e}")
         raise typer.Exit(code=2) from e
     except TimeoutError:
         _err.print("[red]eval run exceeded the wall-clock timeout[/red]")
