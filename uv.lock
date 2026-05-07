@@ -33,6 +33,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
+    { name = "types-jsonschema" },
     { name = "types-pyyaml" },
     { name = "vcrpy" },
 ]
@@ -61,6 +62,7 @@ dev = [
     { name = "pytest", specifier = ">=8.2" },
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "ruff", specifier = ">=0.5" },
+    { name = "types-jsonschema", specifier = ">=4.22" },
     { name = "types-pyyaml", specifier = ">=6.0" },
     { name = "vcrpy", specifier = ">=6.0" },
 ]
@@ -1173,6 +1175,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e4/51/9aed62104cea109b820bbd6c14245af756112017d309da813ef107d42e7e/typer-0.25.1.tar.gz", hash = "sha256:9616eb8853a09ffeabab1698952f33c6f29ffdbceb4eaeecf571880e8d7664cc", size = 122276, upload-time = "2026-04-30T19:32:16.964Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3f/f9/2b3ff4e56e5fa7debfaf9eb135d0da96f3e9a1d5b27222223c7296336e5f/typer-0.25.1-py3-none-any.whl", hash = "sha256:75caa44ed46a03fb2dab8808753ffacdbfea88495e74c85a28c5eefcf5f39c89", size = 58409, upload-time = "2026-04-30T19:32:18.271Z" },
+]
+
+[[package]]
+name = "types-jsonschema"
+version = "4.26.0.20260408"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "referencing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/4c/2ef5483ef81e7b6e1b901eb2994fd280cb19860134a20ff99e72748f3ccb/types_jsonschema-4.26.0.20260408.tar.gz", hash = "sha256:82b75a976ed1507c473b8dee2d4841bd65926758c6d672bb93d08bf5e16f1b3f", size = 16553, upload-time = "2026-04-08T04:36:00.543Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/3c/724ad6ecaea06e8c6c8a8c9949a0979e6a2149b8aec4fe160135c64dd5ac/types_jsonschema-4.26.0.20260408-py3-none-any.whl", hash = "sha256:1ab0058c2612b0b81fc4e3c88ec3f9ad9b0af3fd31a176030d78b6d6cefb6e7b", size = 16081, upload-time = "2026-04-08T04:35:59.678Z" },
 ]
 
 [[package]]
