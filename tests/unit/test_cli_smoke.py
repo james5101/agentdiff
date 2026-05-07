@@ -11,20 +11,28 @@ from agentdiff.cli import app
 runner = CliRunner()
 
 
-def test_help_lists_run_local() -> None:
+def test_help_lists_subcommands() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "run-local" in result.output
+    assert "run" in result.output
+    assert "diff" in result.output
 
 
-def test_run_local_help_shows_args() -> None:
-    result = runner.invoke(app, ["run-local", "--help"])
+def test_run_help_shows_args() -> None:
+    result = runner.invoke(app, ["run", "--help"])
     assert result.exit_code == 0
     assert "REPO_PATH" in result.output
     assert "concurrency" in result.output.lower()
 
 
-def test_run_local_without_api_key_errors(monkeypatch: object, tmp_path: Path) -> None:
+def test_diff_help_shows_args() -> None:
+    result = runner.invoke(app, ["diff", "--help"])
+    assert result.exit_code == 0
+    assert "BASE_SHA" in result.output
+    assert "HEAD_SHA" in result.output
+
+
+def test_run_without_api_key_errors(monkeypatch: object, tmp_path: Path) -> None:
     """No ANTHROPIC_API_KEY → BadParameter (exit code != 0)."""
     # Build a minimal repo with one agent so the CLI gets past loading.
     (tmp_path / "agentdiff.yaml").write_text(
@@ -50,10 +58,9 @@ agents:
     (agent_dir / "o.json").write_text('{"type": "object"}', encoding="utf-8")
     (agent_dir / "g.jsonl").write_text('{"id": "c1", "input": {"x": 1}}\n', encoding="utf-8")
 
-    # Use Typer's `env` to clear any inherited key.
     result = runner.invoke(
         app,
-        ["run-local", str(tmp_path)],
+        ["run", str(tmp_path)],
         env={"ANTHROPIC_API_KEY": ""},
     )
     assert result.exit_code != 0

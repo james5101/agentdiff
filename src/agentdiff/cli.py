@@ -1,12 +1,15 @@
 """`agentdiff` CLI entry point.
 
 Exposes:
-- `run-local` (M1): load agents, run evals, print pass/fail.
-- `diff-local` (M2): materialize two git refs as worktrees, run evals
-  on both, compare, print the rendered diff.
+- `run`: load agents, run evals on the current state, print pass/fail.
+- `diff`: materialize two git refs as worktrees, run evals on both,
+  compare, print the rendered behavioral diff. In CI environments
+  with `GITHUB_BASE_REF`+`GITHUB_HEAD_REF` set, the refs auto-resolve.
 
-Designed so a developer can pipe either command at any agentdiff-shaped
-repo and see a useful answer in under a minute.
+Same CLI runs anywhere — developer laptop, GitHub Actions, GitLab CI,
+Jenkins. The only difference is whether refs are passed as args or
+detected from env. CI gating is via the CLI's exit code (non-zero on
+threshold violation) + the CI's native check status.
 """
 
 from __future__ import annotations
@@ -50,10 +53,9 @@ def _root() -> None:
     """Force Typer to treat commands as named sub-commands.
 
     Without a callback, a single-command Typer app auto-promotes that
-    command to the root, so `agentdiff <path>` would work and
-    `agentdiff run-local <path>` would not. The HANDOFF mandates the
-    `run-local` sub-command name (and there will be more — `init`, etc.
-    — in later milestones).
+    command to the root. We have multiple sub-commands (`run`, `diff`,
+    `init`) and want them stable, so the callback stays even though
+    it's a no-op.
     """
 
 
@@ -115,7 +117,7 @@ def _print_run_summary(run: EvalRun) -> None:
     _console.print(table)
 
 
-async def _run_local_async(
+async def _run_async(
     repo_path: Path,
     git_sha: str,
     concurrency: int,
@@ -156,8 +158,8 @@ async def _run_local_async(
     return 1 if any_failed else 0
 
 
-@app.command("run-local")
-def run_local(
+@app.command("run")
+def run(
     repo_path: Annotated[
         Path,
         typer.Argument(
@@ -193,7 +195,7 @@ def run_local(
 
     try:
         exit_code = asyncio.run(
-            _run_local_async(repo_path, git_sha, effective_concurrency, settings)
+            _run_async(repo_path, git_sha, effective_concurrency, settings)
         )
     except DefinitionError as e:
         _err.print(f"[red]definition error:[/red] {e}")
@@ -236,7 +238,7 @@ async def _run_agent_eval_sets(
     return runs
 
 
-async def _diff_local_async(
+async def _diff_async(
     repo_path: Path,
     base_sha: str,
     head_sha: str,
@@ -332,8 +334,8 @@ async def _diff_local_async(
     return 1 if any_violation else 0
 
 
-@app.command("diff-local")
-def diff_local(
+@app.command("diff")
+def diff(
     repo_path: Annotated[
         Path,
         typer.Argument(
@@ -375,7 +377,7 @@ def diff_local(
 
     try:
         exit_code = asyncio.run(
-            _diff_local_async(
+            _diff_async(
                 repo_path,
                 base_sha,
                 head_sha,

@@ -7,7 +7,7 @@
     Copies examples/pr-risk-classifier to a temp git repo, commits the
     working prompt as base, applies a deliberately-bad prompt change
     (loosens the dep-CVE-history rule to only trigger on major-version
-    bumps), commits as head, then runs `agentdiff diff-local`.
+    bumps), commits as head, then runs `agentdiff diff`.
 
     The bad change should regress at least the deps-cve-history-001
     case: lodash patch upgrades will newly classify as
@@ -96,10 +96,10 @@ minor and patch dependency upgrades.
     Write-Host ">>> base: $base"
     Write-Host ">>> head: $head"
     Write-Host ""
-    Write-Host ">>> Running agentdiff diff-local..."
+    Write-Host ">>> Running agentdiff diff..."
     Write-Host ""
 
-    & $uv run --project $repoRoot agentdiff diff-local $tmp $base $head --show-reasoning
+    & $uv run --project $repoRoot agentdiff diff $tmp $base $head --show-reasoning
     $exitCode = $LASTEXITCODE
 }
 finally {
@@ -108,5 +108,5 @@ finally {
 
 Write-Host ""
 Write-Host ">>> Temp repo left at: $tmp"
-Write-Host ">>> diff-local exit code: $exitCode"
+Write-Host ">>> diff exit code: $exitCode"
 exit $exitCode

@@ -3,12 +3,12 @@
 .SYNOPSIS
     Run the Milestone 2 acceptance test: build a temp git repo from
     tests/fixtures/sample-repo, commit the working prompt, break it,
-    commit again, then run `agentdiff diff-local` across the two shas.
+    commit again, then run `agentdiff diff` across the two shas.
 
 .DESCRIPTION
     Per HANDOFF.md sec 6 Milestone 2:
     > In the fixture repo, make a commit that intentionally breaks
-    > one eval case in the prompt. Run `agentdiff diff-local`. The
+    > one eval case in the prompt. Run `agentdiff diff`. The
     > output identifies the broken case as a regression.
 
     Requires ANTHROPIC_API_KEY in the environment. The temp repo is
@@ -66,10 +66,10 @@ Respond with a single JSON object, nothing else, in this exact shape:
     Write-Host ">>> base: $base"
     Write-Host ">>> head: $head"
     Write-Host ""
-    Write-Host ">>> Running agentdiff diff-local..."
+    Write-Host ">>> Running agentdiff diff..."
     Write-Host ""
 
-    & $uv run --project $repoRoot agentdiff diff-local $tmp $base $head
+    & $uv run --project $repoRoot agentdiff diff $tmp $base $head
     $exitCode = $LASTEXITCODE
 }
 finally {
@@ -78,5 +78,5 @@ finally {
 
 Write-Host ""
 Write-Host ">>> Temp repo left at: $tmp"
-Write-Host ">>> diff-local exit code: $exitCode"
+Write-Host ">>> diff exit code: $exitCode"
 exit $exitCode
