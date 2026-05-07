@@ -24,6 +24,7 @@ from agentdiff.definition.schema import (
     EvalCase,
     InvocationResult,
 )
+from agentdiff.eval.judge import Judger
 
 if TYPE_CHECKING:
     from agentdiff.providers.base import Provider
@@ -53,12 +54,18 @@ async def run_case(
     provider: Provider,
     *,
     output_schema: dict[str, Any],
+    judger: Judger | None = None,
     timeout_seconds: float = DEFAULT_CASE_TIMEOUT_S,
 ) -> CaseResult:
     """Invoke the agent with `case.input` and grade the result.
 
-    The per-case timeout wraps only the provider invocation; grading is
-    pure-Python and never blocks.
+    The per-case timeout wraps only the provider invocation; grading
+    is pure-Python OR (for judged cases) hits the judge model API,
+    which has its own internal timeout/retry behavior via the SDK.
+
+    `judger` is required when any case in the eval set lacks an
+    `expected` field; if it's None and a case omits `expected`, the
+    case is graded purely on schema validity (M1 behavior).
     """
     try:
         result = await asyncio.wait_for(
@@ -116,8 +123,24 @@ async def run_case(
             failure_reason=f"schema violation: {schema_error}",
         )
 
-    # Milestone 1: schema-valid is pass. Judge model arrives in M2.
-    return CaseResult(case_id=case.id, invocation=result, passed=True)
+    # No `expected`: schema is valid, now ask the judge.
+    if judger is None:
+        # No judger configured (M1-style call); schema-valid is pass.
+        return CaseResult(case_id=case.id, invocation=result, passed=True)
+
+    judgment = await judger.judge(
+        case_input=case.input,
+        agent_output=result.output,
+    )
+    return CaseResult(
+        case_id=case.id,
+        invocation=result,
+        passed=judgment.passed,
+        failure_reason=(
+            None if judgment.passed else (judgment.error or f"judge: {judgment.reasoning}")
+        ),
+        judge_score=judgment.score,
+    )
 
 
 def _validate(output: dict[str, Any], schema: dict[str, Any]) -> str | None:

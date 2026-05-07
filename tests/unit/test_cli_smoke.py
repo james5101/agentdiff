@@ -24,9 +24,7 @@ def test_run_local_help_shows_args() -> None:
     assert "concurrency" in result.output.lower()
 
 
-def test_run_local_without_api_key_errors(
-    monkeypatch: object, tmp_path: Path
-) -> None:
+def test_run_local_without_api_key_errors(monkeypatch: object, tmp_path: Path) -> None:
     """No ANTHROPIC_API_KEY → BadParameter (exit code != 0)."""
     # Build a minimal repo with one agent so the CLI gets past loading.
     (tmp_path / "agentdiff.yaml").write_text(
@@ -50,9 +48,7 @@ agents:
     (agent_dir / "p.md").write_text("Classify.", encoding="utf-8")
     (agent_dir / "i.json").write_text('{"type": "object"}', encoding="utf-8")
     (agent_dir / "o.json").write_text('{"type": "object"}', encoding="utf-8")
-    (agent_dir / "g.jsonl").write_text(
-        '{"id": "c1", "input": {"x": 1}}\n', encoding="utf-8"
-    )
+    (agent_dir / "g.jsonl").write_text('{"id": "c1", "input": {"x": 1}}\n', encoding="utf-8")
 
     # Use Typer's `env` to clear any inherited key.
     result = runner.invoke(

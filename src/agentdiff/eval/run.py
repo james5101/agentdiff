@@ -25,6 +25,7 @@ from agentdiff.eval.case import (
     load_output_schema,
     run_case,
 )
+from agentdiff.eval.judge import Judger
 
 if TYPE_CHECKING:
     from agentdiff.providers.base import Provider
@@ -42,6 +43,7 @@ async def run_eval_set(
     cases: list[EvalCase],
     provider: Provider,
     git_sha: str,
+    judger: Judger | None = None,
     concurrency: int = DEFAULT_CONCURRENCY,
     case_timeout_s: float = DEFAULT_CASE_TIMEOUT_S,
     run_timeout_s: float = DEFAULT_RUN_TIMEOUT_S,
@@ -50,6 +52,9 @@ async def run_eval_set(
 
     `eval_set` is the filename of the JSONL file (e.g. "golden.jsonl"),
     used purely as a label in the resulting `EvalRun`.
+
+    `judger` grades cases that have no `expected` field. If omitted,
+    those cases pass on schema validity alone (M1 behavior).
     """
     if concurrency < 1:
         raise ValueError(f"concurrency must be ≥ 1, got {concurrency}")
@@ -64,6 +69,7 @@ async def run_eval_set(
                 agent,
                 provider,
                 output_schema=output_schema,
+                judger=judger,
                 timeout_seconds=case_timeout_s,
             )
 
@@ -106,6 +112,8 @@ async def run_eval_set(
         git_sha=git_sha,
         cases=case_results,
         total_cost_usd=total_cost,
+        judge_cost_usd=judger.total_cost_usd if judger else Decimal("0"),
+        judge_fallback_used=judger.fallback_used if judger else False,
         p50_latency_ms=p50,
         p95_latency_ms=p95,
     )

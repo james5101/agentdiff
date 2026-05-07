@@ -131,10 +131,7 @@ class ClaudeProvider:
                 output=None,
                 usage=usage,
                 latency_ms=latency_ms,
-                error=(
-                    f"agent output is not valid JSON: {e}; "
-                    f"raw={full_text[:200]!r}"
-                ),
+                error=(f"agent output is not valid JSON: {e}; raw={full_text[:200]!r}"),
             )
 
         # The prefill `{` guarantees that any successful parse is a

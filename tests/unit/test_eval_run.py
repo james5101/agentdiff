@@ -4,12 +4,27 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
+import anthropic
 import pytest
 
 from agentdiff.definition.schema import AgentDefinition, EvalCase
+from agentdiff.eval.judge import Judger
 from agentdiff.eval.run import _percentile, run_eval_set
 from tests.conftest import FakeProvider
+
+
+def _fake_judge_client(judge_text: str) -> anthropic.AsyncAnthropic:
+    create = AsyncMock(
+        return_value=SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=judge_text)],
+            usage=SimpleNamespace(input_tokens=50, output_tokens=8),
+        )
+    )
+    fake = SimpleNamespace(messages=SimpleNamespace(create=create))
+    return fake  # type: ignore[return-value]
 
 
 async def test_run_eval_set_aggregates_cost_and_latency(
@@ -117,6 +132,37 @@ async def test_run_eval_set_handles_empty_cases(
     assert run.total_cost_usd == Decimal("0")
     assert run.p50_latency_ms == 0
     assert run.p95_latency_ms == 0
+
+
+async def test_run_eval_set_records_judge_cost_and_fallback(
+    make_agent: Callable[..., AgentDefinition],
+) -> None:
+    """Cases without `expected` get judged; judge_cost rolls up on EvalRun."""
+    agent = make_agent()
+    cases = [EvalCase(id=f"c{i}", input={"i": i}) for i in range(3)]
+    provider = FakeProvider(lambda _: {"intent": "greeting"})
+    judger = Judger(
+        client=_fake_judge_client('"score": 0.9, "reasoning": "ok"}'),
+        rubric="x",
+        fallback_used=True,
+    )
+
+    run = await run_eval_set(
+        agent=agent,
+        eval_set="adversarial.jsonl",
+        cases=cases,
+        provider=provider,
+        git_sha="abc1234",
+        judger=judger,
+        concurrency=2,
+    )
+
+    assert all(cr.passed for cr in run.cases)
+    assert all(cr.judge_score == 0.9 for cr in run.cases)
+    # 3 judge calls * cost-per-call > 0.
+    assert run.judge_cost_usd > Decimal("0")
+    assert run.judge_cost_usd == judger.total_cost_usd
+    assert run.judge_fallback_used is True
 
 
 # ---------- percentile helper ----------

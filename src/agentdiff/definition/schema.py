@@ -124,7 +124,12 @@ class CaseResult(BaseModel):
 
 
 class EvalRun(BaseModel):
-    """One eval set executed against one agent version (one git sha)."""
+    """One eval set executed against one agent version (one git sha).
+
+    `total_cost_usd` is agent invocation cost only; judge model cost is
+    reported separately so reviewers can see how much of an eval bill
+    is grading vs. running the agent itself (HANDOFF.md sec 3.9).
+    """
 
     model_config = _STRICT_CONFIG
 
@@ -133,8 +138,10 @@ class EvalRun(BaseModel):
     git_sha: str = Field(min_length=7)
     cases: list[CaseResult]
     total_cost_usd: Decimal
+    judge_cost_usd: Decimal = Decimal("0")
     p50_latency_ms: int = Field(ge=0)
     p95_latency_ms: int = Field(ge=0)
+    judge_fallback_used: bool = False
 
 
 class SchemaDriftEntry(BaseModel):
