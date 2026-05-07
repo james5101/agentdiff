@@ -1,6 +1,6 @@
 # agentdiff
 
-> When you change an agent's prompt, schema, or model, you have no idea if it'll be better or worse in production until it ships. **agentdiff** is a GitHub bot that runs your agent's evals against the old and new versions on every PR and posts a behavioral diff — accuracy changes, regression cases, schema drift, cost delta — so reviewers can approve agent changes the same way they approve code changes.
+> When you change an agent's prompt, schema, or model, you have no idea if it'll be better or worse in production until it ships. **agentdiff** is a CLI that runs your agent's evals against the old and new versions on every PR and prints a behavioral diff — accuracy changes, regression cases, schema drift, cost delta — so reviewers can approve agent changes the same way they approve code changes. The CLI's exit code gates merges via your existing CI; no third-party bot to install.
 
 ## What's an "agent"?
 
@@ -31,21 +31,33 @@ See [`docs/concepts.md`](docs/concepts.md) for the full conceptual model.
 
 ## What does the diff actually look like?
 
-Excerpt from the included PR-risk-classifier example, after a developer "simplified" the dependency-CVE rule in `prompt.md`:
+Excerpt from the included email-triager example, after a developer "loosened" the spam-handling rule in `prompt.md`:
 
 ```markdown
-### `pr-risk-classifier` — `golden.jsonl`
+### `email-triager` · `golden.jsonl`
 
-**:no_entry: Threshold violations (blocks merge):**
-- `golden.jsonl` minPassRate=1.00 → got 0.80
+🚨 **FAIL** · pass rate 100% → 83% (-16.7pp) · 1 regression · merge blocked
 
-**:x: Regressions (1):** `deps-cve-history-001`
-**Pass rate:** 100.0% → 80.0% (-20.0pp)
-**Cost:** $0.013 → $0.011 (-14.0%)
-**Latency:** p50 2188ms → 1891ms, p95 2441ms → 2195ms
+> [!CAUTION]
+> **Threshold violation:**
+> - `golden.jsonl` · `minPassRate=0.95`, got `0.83`
+
+| | base | head | Δ |
+| --- | --- | --- | --- |
+| Pass rate | 100.0% | 83.3% | 🔻 -16.7pp |
+| Cost (USD) | $0.0102 | $0.0104 | +2.6% |
+| Latency p50 | 1443ms | 1558ms | +115ms |
+| Latency p95 | 1825ms | 2109ms | +284ms |
+
+**🔻 Regressions (1)**
+- `spam-cold-001`
+
+**📐 Schema drift (2)**
+- `billing-refund-001` · `suggested_template_id`: `str` → `NoneType`
+- `spam-cold-001` · `suggested_template_id`: `NoneType` → `str`
 ```
 
-Reviewer sees, before merging: *the "reduce false positives" change accidentally downgraded the lodash CVE-history case.* That's the entire product.
+Reviewer sees, before merging: *the "engage all leads" change broke spam handling and (as an unintended side effect) silently changed the template behavior on the refund case.* That's the entire product.
 
 ## Status
 
