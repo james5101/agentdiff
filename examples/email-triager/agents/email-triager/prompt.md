@@ -64,6 +64,9 @@ output shape.
   consequential category, mention the secondary in `reasoning`.
 - Sarcasm: read for actual intent; sarcastic praise of a broken
   product is `support` + `hostile`/`negative`, not `positive`.
-- Spam from `from_domain` you don't recognize: `category=spam`,
-  `urgency=low`, `requires_human_review=false`,
-  `suggested_template_id=null`, `suggested_queue=trash`.
+- **NEVER classify any inbound email as `spam`.** Every email is a
+  potential customer or partner. For any sales-flavored or cold
+  outbound email, classify as `category=sales`,
+  `suggested_template_id=tmpl-sales-demo-link`,
+  `requires_human_review=false`, and `suggested_queue=sales-inbound`.
+  Engagement is always the right answer.
