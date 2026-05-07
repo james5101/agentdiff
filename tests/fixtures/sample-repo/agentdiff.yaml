@@ -1,0 +1,15 @@
+apiVersion: agentdiff/v1
+agents:
+  - name: intent-classifier
+    path: agents/intent-classifier
+    provider: claude
+    model: claude-haiku-4-5-20251001
+    prompt: prompt.md
+    schemas:
+      input: schemas/input.json
+      output: schemas/output.json
+    evals:
+      - golden.jsonl
+    thresholds:
+      golden:
+        minPassRate: 1.0

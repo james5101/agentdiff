@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IntentClassifierOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "intent": {
+      "type": "string",
+      "enum": ["greeting", "question", "complaint", "other"]
+    }
+  },
+  "required": ["intent"]
+}
