@@ -51,14 +51,14 @@ Reviewer sees, before merging: *the "reduce false positives" change accidentally
 
 **Pre-alpha.** What works today:
 
-- **`agentdiff run-local <repo>`** — load agents from `agentdiff.yaml`, run their evals, print pass/fail.
-- **`agentdiff diff-local <repo> <base-sha> <head-sha>`** — materialize both refs as git worktrees, run evals on each, render the markdown diff to stdout. Pass `--show-reasoning` to also see per-case judge reasoning.
+- **`agentdiff run <repo>`** — load agents from `agentdiff.yaml`, run their evals, print pass/fail.
+- **`agentdiff diff <repo> <base-sha> <head-sha>`** — materialize both refs as git worktrees, run evals on each, render the markdown diff to stdout. Pass `--show-reasoning` to also see per-case judge reasoning. Same command works in CI — when `GITHUB_BASE_REF`/`GITHUB_HEAD_REF` are set, the refs auto-resolve.
 - **Provider:** Claude (Anthropic). OpenAI is stubbed and raises with a clear message.
 - **Grading:** exact-match on `expected`, or LLM-as-judge (Sonnet) against a per-eval-set rubric file when `expected` is absent.
 
-What doesn't yet:
+What's deferred:
 
-- **The GitHub App webhook + worker** that turns `diff-local` into an actual PR comment. That's [Milestone 3](HANDOFF.md#6-build-sequence-4-weeks) — coming next.
+- **A hosted GitHub bot** (eventual paid product) that posts the rendered diff as a PR comment + sets a check run automatically. The current CLI gets you the same merge-gating behavior via your CI's exit-code check — see [Milestone 5+](HANDOFF.md#milestone-5--hosted-bot-paid-product).
 - OpenAI, Bedrock, or any non-Claude provider.
 - Persistence of historical metrics across runs.
 
@@ -76,7 +76,7 @@ uv sync
 $env:ANTHROPIC_API_KEY = "sk-ant-..."
 
 # Run the included example
-uv run agentdiff run-local examples/pr-risk-classifier
+uv run agentdiff run examples/pr-risk-classifier
 ```
 
 To see a full diff against a deliberate prompt regression (sets up a temp git repo with two commits, runs both versions, prints the comparison):
