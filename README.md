@@ -79,6 +79,14 @@ $env:ANTHROPIC_API_KEY = "sk-ant-..."
 uv run agentdiff run examples/pr-risk-classifier
 ```
 
+Or scaffold a brand new agent in any directory:
+
+```powershell
+mkdir my-agent
+uv run agentdiff init my-agent
+uv run agentdiff run my-agent
+```
+
 To see a full diff against a deliberate prompt regression (sets up a temp git repo with two commits, runs both versions, prints the comparison):
 
 ```powershell
@@ -86,6 +94,12 @@ To see a full diff against a deliberate prompt regression (sets up a temp git re
 ```
 
 Total Anthropic spend for the demo: ~$0.10.
+
+## Use it in CI
+
+agentdiff is just a CLI — the same command runs locally or as a step in any pipeline. For GitHub Actions specifically, drop the [example workflow](examples/github-actions/agentdiff.yml) into your repo at `.github/workflows/agentdiff.yml`, set `ANTHROPIC_API_KEY` as a repo secret, and you're done. PRs that violate your declared thresholds fail the check and block merge. See [`examples/github-actions/`](examples/github-actions/) for the full setup walkthrough.
+
+For other CIs (GitLab CI, Jenkins, etc.) the recipe is the same — install agentdiff, run `agentdiff diff <repo> <base-sha> <head-sha>` with explicit refs, the exit code gates merge.
 
 ## Read more
 

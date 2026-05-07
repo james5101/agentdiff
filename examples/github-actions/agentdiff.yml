@@ -1,0 +1,33 @@
+# Drop this file into your repo at `.github/workflows/agentdiff.yml`
+# alongside an `agentdiff.yaml` at the repo root (run `agentdiff init`
+# to scaffold one).
+#
+# On every PR, this workflow:
+# 1. Clones the repo with full history (so both PR refs are fetchable).
+# 2. Installs agentdiff via pipx.
+# 3. Runs `agentdiff diff` — base/head SHAs auto-resolve from the
+#    pull_request event payload.
+# 4. Exit code drives the merge gate via the GitHub Actions check.
+#
+# Configure ANTHROPIC_API_KEY as a repo secret before merging this.
+name: agentdiff
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR
+        uses: actions/checkout@v4
+        with:
+          # Full history so both base.sha and head.sha resolve locally.
+          fetch-depth: 0
+
+      - name: Run agentdiff
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          pipx run --spec git+https://github.com/james5101/agentdiff.git agentdiff diff .
