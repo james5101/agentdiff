@@ -6,6 +6,18 @@
 
 ---
 
+## Status update — 2026-05-07
+
+**Architectural pivot from "GitHub bot" to "CLI."** After M1+M2 shipped and were dogfooded against a real-feeling agent (PR risk classifier example), we revisited the M3 plan and changed direction:
+
+- agentdiff is now positioned as **a CLI tool** that runs anywhere — locally on a developer's laptop, or as a step inside any CI/CD pipeline (GitHub Actions, GitLab CI, Jenkins, etc.). The CLI's exit code gates merges; the rendered markdown shows up in CI logs.
+- The originally planned **GitHub App + webhook + worker + Redis stack is deferred** to a future milestone framed as a *hosted-bot product* (potentially paid, open-core split). The CLI is the foundation; the bot would wrap the CLI.
+- Three of §8's known unknowns (forked PRs, concurrent PRs, cost cap) **dissolve under the CLI model** — they're handled by the user's existing CI rules and secrets management.
+
+Sections affected: §3.4 (job execution), §3.5 (GitHub integration), §3.10 (out of scope), §4 (layout), §6 milestones 3+, §7.4 (deps), §8 (known unknowns). Each has been rewritten in place. The original "GitHub bot" framing is preserved in this preamble for historical context.
+
+---
+
 ## 1. Project mission
 
 `agentdiff` is a GitHub bot that runs an agent's evals against the old and new versions of its definition on every PR, and posts a behavioral diff so reviewers can approve agent changes the same way they approve code changes.
@@ -83,17 +95,15 @@ Resist any urge to grow this interface beyond ~5 methods. If a feature requires 
 - When v1 is shipped and validated, persistence will be added for historical metrics. Not before.
 
 ### 3.4 Job execution
-- **Arq** (async Redis queue) for the eval-run worker.
-- One Redis instance, used purely as a queue broker. Not as a cache, not as a store.
-- Workers run in the same container as the webhook receiver in dev; separate container in any deployed environment.
-- No Celery. No RabbitMQ. No Kafka. Boring, async-native, single-purpose.
+- **Synchronous CLI process.** No daemons, no queue, no Redis. The user's CI runner (or laptop) is the worker.
+- All state for a single invocation lives in process memory and the cloned worktrees in `tempfile.TemporaryDirectory`.
+- The eventual hosted-bot product (deferred milestone) MAY introduce an async worker pool, but it would still shell out to / import from the same CLI logic — the queue is *its* concern, not the CLI's.
 
-### 3.5 GitHub integration
-- Implement as a **GitHub App** (not an OAuth app, not a personal access token).
-- Use the official `githubkit` Python library for typed GitHub API access.
-- Webhook signature verification is mandatory. Reject unsigned webhooks with 401.
-- The bot posts **one comment per PR** and updates it on subsequent pushes (don't spam new comments).
-- The bot creates **one check run per PR** that reflects the merge gate decision.
+### 3.5 Distribution and CI integration
+- agentdiff is shipped as a **Python CLI** installable via `uv tool install` (or `pipx install`). No GitHub App. No webhook receiver. No service to host.
+- CI integration is "run the CLI in a CI step." When `GITHUB_BASE_REF` and `GITHUB_HEAD_REF` (or equivalents) are set in the environment, `agentdiff diff` auto-resolves the refs; otherwise it takes explicit positional args.
+- Merge gating relies on the **CI's native check status** + **CLI exit code** (non-zero on threshold violation). The rendered markdown surfaces in CI job logs.
+- **No PR comments in v1.** They're a UX nicety, not a correctness mechanism — and they would force authentication, idempotency, and platform-specific posting logic that the CLI sidesteps entirely. Reserved for the eventual hosted-bot product.
 
 ### 3.6 Agent definition format
 Agents in a user's repo are discovered via an `agentdiff.yaml` at the repo root:
@@ -151,19 +161,30 @@ A case "passes" if:
 - Judge calls are themselves observable (cost is tracked separately and shown in the diff).
 
 ### 3.10 Out of scope for v1 (reject if requested)
+
+**Permanent no** — these are out of scope at every milestone:
+
 - A web UI of any kind
-- A database / persistence layer
 - Production sampling / replay
 - Deploy / canary / rollback features
-- Multi-tenancy beyond "one GitHub App installation per org"
-- OpenAI / Bedrock / any provider other than Claude (stubbed only)
 - Custom judge models or judge model swap
 - Eval generation / synthesis
 - Prompt optimization / suggestions
-- Slack/Discord notifications (the comment is the notification)
-- Cost budgets / spend alerts
-- Auth beyond GitHub App installation
+- Slack/Discord notifications
 - Anything called "marketplace," "catalog," or "registry"
+
+**Deferred to the eventual hosted-bot product** — out of scope for the CLI, but reserved for a future paid milestone:
+
+- A database / persistence layer (historical metrics across runs)
+- A GitHub App, webhook receiver, or any persistent service
+- PR comments and check runs posted automatically
+- Multi-tenancy
+- Cost budgets / spend alerts (the bot would enforce them; in CLI mode the user's CI bills cap themselves)
+- Auth beyond local CLI use
+
+**Out of scope for v1 specifically** — may come in a future CLI milestone:
+
+- OpenAI / Bedrock / any provider other than Claude (stubbed only)
 
 If the human asks for one of these mid-build, push back and reference this section.
 
@@ -174,7 +195,7 @@ If the human asks for one of these mid-build, push back and reference this secti
 ```
 agentdiff/
 ├── HANDOFF.md                       # this file
-├── README.md                        # written last
+├── README.md
 ├── pyproject.toml                   # uv-managed
 ├── ruff.toml
 ├── mypy.ini
@@ -182,17 +203,9 @@ agentdiff/
 ├── src/
 │   └── agentdiff/
 │       ├── __init__.py
-│       ├── cli.py                   # `agentdiff init`, etc.
+│       ├── cli.py                   # `agentdiff run`, `diff`, `init`
 │       ├── config.py                # env vars, settings via pydantic-settings
-│       │
-│       ├── webhook/                 # FastAPI app
-│       │   ├── app.py
-│       │   ├── github.py            # signature verification, event parsing
-│       │   └── handlers.py          # webhook → enqueue job
-│       │
-│       ├── worker/                  # Arq worker
-│       │   ├── tasks.py             # the eval-run job
-│       │   └── runner.py            # orchestrates clone → run → diff → post
+│       ├── _parsing.py              # lenient JSON extraction from LLM text
 │       │
 │       ├── providers/
 │       │   ├── base.py              # Provider protocol + types
@@ -209,29 +222,26 @@ agentdiff/
 │       │   ├── run.py               # full eval-set execution
 │       │   └── judge.py             # LLM-as-judge logic
 │       │
-│       ├── diff/                    # behavioral comparison
-│       │   ├── compare.py           # base vs head → BehavioralDiff
-│       │   ├── schema_drift.py
-│       │   └── render.py            # BehavioralDiff → markdown comment
-│       │
-│       └── github/
-│           ├── client.py            # githubkit wrapper
-│           ├── comment.py           # upsert PR comment
-│           └── check_run.py         # set check status
+│       └── diff/                    # behavioral comparison
+│           ├── compare.py           # base vs head → BehavioralDiff
+│           ├── schema_drift.py
+│           └── render.py            # BehavioralDiff → markdown
 │
-├── tests/
-│   ├── unit/
-│   ├── integration/                 # require real GitHub App + Anthropic key
-│   └── fixtures/
-│       ├── sample-repo/             # a fake user repo for end-to-end tests
-│       └── eval-cases/
+├── examples/
+│   ├── pr-risk-classifier/          # runnable companion to docs/concepts.md
+│   └── github-actions/              # sample workflow file users copy in
 │
-└── deploy/
-    ├── docker-compose.yml           # local dev: webhook + worker + redis
-    └── Dockerfile
+├── scripts/                         # local-only demo + acceptance harnesses
+│
+└── tests/
+    ├── unit/
+    └── fixtures/
+        └── sample-repo/             # the M1 toy intent-classifier
 ```
 
-Cross-module imports flow downward only: `webhook` and `worker` may import from anything else. `providers`, `definition`, `eval`, `diff`, `github` may not import from each other except through `definition.schema` (the shared types).
+Cross-module imports flow downward only: `cli` may import from anything else. `providers`, `definition`, `eval`, `diff` may not import from each other except through `definition.schema` (the shared types). The `_parsing` module is a tiny utility that any package may import.
+
+The `webhook/`, `worker/`, `github/`, and `deploy/` directories called out in earlier drafts are gone — they were premised on the bot architecture, which is now deferred (see Status update).
 
 ---
 
@@ -333,29 +343,38 @@ Build:
 
 **Acceptance test:** in the fixture repo, make a commit that intentionally breaks one eval case in the prompt. Run `agentdiff diff-local`. The output identifies the broken case as a regression.
 
-### Milestone 3 — GitHub integration
-**Goal:** the bot works on real PRs.
+### Milestone 3 — CLI ergonomics + CI runnability
+**Goal:** the same CLI runs cleanly on a developer's laptop or as a step in any CI/CD pipeline. Exit codes gate merges; CI logs carry the rendered diff.
 
 Build:
-- `webhook.app`: FastAPI app, single endpoint `/webhook`.
-- `webhook.github`: signature verification.
-- `worker.tasks`: the Arq job that does clone → diff → comment.
-- `github.client`, `github.comment`, `github.check_run`: post and update PR comments and check runs.
-- `deploy/docker-compose.yml`: local dev stack (webhook + worker + redis).
-- Register a GitHub App in the human's account and document the setup in `README.md`.
+- Rename `run-local` → `run` and `diff-local` → `diff`. The "-local" suffix was a holdover from when there was a planned remote/bot equivalent; there isn't anymore.
+- `agentdiff diff` (no positional args) auto-detects PR base/head from `GITHUB_BASE_REF` + `GITHUB_HEAD_REF` (and equivalents for other CIs as users ask). Explicit positional shas still override.
+- `agentdiff init` scaffolds a starter `agentdiff.yaml` plus a working sample agent under `agents/example-classifier/` (prompt, schemas, golden cases) so a fresh user can run `agentdiff run` immediately and see something pass.
+- `examples/github-actions/agentdiff.yml` — a copy-pasteable sample workflow that pip-installs agentdiff and runs `agentdiff diff` on `pull_request`.
+- Drop unused runtime deps (`fastapi`, `uvicorn`, `arq`, `redis`, `githubkit`) from `pyproject.toml`. Move `httpx` to dev-only since it's only used in test fakes.
 
-**Acceptance test:** the human installs the GitHub App on a test repo, opens a PR that modifies an agent definition, and within 5 minutes sees a comment with a behavioral diff and a check run with the correct status.
+**Acceptance test:** open a PR on a real repo (the human's own, or a fresh test repo) where the workflow file is in place and an `agentdiff.yaml` declares one agent. The PR's CI check runs `agentdiff diff`, fails on a deliberate prompt regression, and the rendered markdown shows up in the action's job log.
 
 ### Milestone 4 — Use it on real work
 **Goal:** the human uses this on a real DevSecOps agent in their own work for a week.
 
 Build:
 - Whatever rough edges surface in actual use. The human will report bugs as GitHub issues; you'll fix them.
-- Polish the comment formatting.
-- Write the `README.md` and a `docs/getting-started.md`.
-- Add `agentdiff init` CLI that scaffolds a sample `agentdiff.yaml` in a repo.
+- Polish the rendered-diff formatting.
+- Round out `README.md` and write `docs/getting-started.md`.
 
 **Acceptance test:** the human reports they used it on at least 5 real PRs and it caught at least one issue they would have otherwise shipped. After this milestone, they'll show it to 3 people; if all 3 say "I'd use that," it goes public per their stated trigger.
+
+### Milestone 5+ — Hosted bot (paid product)
+**Goal:** offer a managed GitHub bot that wraps the CLI, for teams who don't want to wire it into their own CI.
+
+This milestone is **deferred and out of scope for the current build**. It exists in the document only so the architecture stays compatible with it. Sketch:
+
+- The bot is a thin web service (FastAPI or similar) that subscribes to GitHub webhook events for PRs, materializes the same git worktrees the CLI does, **shells out to or imports** the same CLI logic, and posts the rendered markdown as a PR comment + sets a check run.
+- All M3-deferred concerns live here: webhook signature verification, GitHub App registration, comment idempotency, forked-PR policy, per-PR cost cap, multi-tenant isolation, historical metrics persistence, cross-repo dashboards.
+- Open-core split: CLI stays MIT/Apache-licensed and free. Bot is the paid SaaS layer. Conversation around licensing happens at M5 start, not before.
+
+Do not start work on this milestone without explicit human direction.
 
 ---
 
@@ -384,21 +403,27 @@ Build:
 - **Prefer boring.** The product's job is reliability. Boring is reliable.
 - **Prefer fewer features.** Each feature is permanent maintenance cost.
 - **Prefer explicit over magic.** Pydantic > dataclasses with hand-rolled validation. FastAPI DI > globals. Typer > custom argparse.
-- **Ask before adding a dependency.** The current allowlist: `pydantic`, `pydantic-settings`, `fastapi`, `uvicorn`, `typer`, `structlog`, `arq`, `redis`, `httpx`, `anthropic`, `githubkit`, `jsonschema`, `gitpython`, `ruff`, `mypy`, `pytest`, `pytest-asyncio`, `vcrpy`. Anything else needs human approval.
+- **Ask before adding a dependency.** Current runtime allowlist: `pydantic`, `pydantic-settings`, `typer`, `structlog`, `anthropic`, `jsonschema`, `gitpython`, `pyyaml`. Current dev allowlist: `ruff`, `mypy`, `pytest`, `pytest-asyncio`, `vcrpy`, `httpx` (test fakes), `types-pyyaml`, `types-jsonschema`. Anything else needs human approval.
+
+  Dependencies removed at M3 architecture pivot: `fastapi`, `uvicorn`, `arq`, `redis`, `githubkit` — these were premised on the bot architecture. They'd be re-added if/when the deferred hosted-bot milestone (M5+) is started, scoped to that subpackage only.
 
 ---
 
 ## 8. Known unknowns (flag, do not decide unilaterally)
 
-1. **Judge model determinism.** LLM-as-judge introduces noise. How do we report judge confidence in the diff? Should we run the judge multiple times and average? Defer until Milestone 2 reveals how bad the noise is in practice.
+1. **Judge model determinism.** LLM-as-judge introduces noise. M2 dogfooding showed the noise is mostly tractable when rubrics are explicit; the `--show-reasoning` flag exposes the judge's actual thinking so users can iterate on rubrics or prompts. No multi-sample averaging in v1.
 
 2. **Eval case storage at scale.** A repo with 10,000 eval cases is going to be slow. v1 punts and assumes O(100) cases. If a real user shows up with O(10,000), we'll deal with it then.
 
-3. **Forked PRs.** A PR from a fork can't be safely run against the bot's secrets (model API keys). v1 will refuse to run on PRs from forks and post a comment explaining why. Confirm before Milestone 3.
+### Resolved by the M3 CLI pivot
 
-4. **Concurrent PRs on the same agent.** If two PRs touch the same agent simultaneously, do we serialize, run both, or queue? v1 assumption: run both independently, no coordination. Confirm before Milestone 3.
+Three known unknowns from earlier drafts dissolved when we moved off the bot architecture:
 
-5. **Cost guardrails.** A malicious or accidental PR with 100,000 eval cases could rack up real money. v1 hardcodes a per-PR-run cost cap (e.g., $5) and refuses to start runs estimated to exceed it. Confirm the cap value with the human.
+- **~~Forked PRs.~~** Now the user's CI's problem (GitHub Actions has well-understood `pull_request` vs `pull_request_target` semantics; the user picks).
+- **~~Concurrent PRs on the same agent.~~** Now the user's CI concurrency rules.
+- **~~Per-PR cost cap.~~** Now the user's CI minutes + their own Anthropic spend cap.
+
+These will return as concerns when the deferred hosted-bot milestone (M5+) is started; they'll need to be solved there.
 
 ---
 
