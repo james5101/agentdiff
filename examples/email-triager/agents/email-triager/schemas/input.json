@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EmailTriagerInput",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "from_domain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "body_plaintext": {
+      "type": "string",
+      "minLength": 1
+    },
+    "has_attachments": {
+      "type": "boolean"
+    },
+    "thread_msg_count": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "subject",
+    "from_domain",
+    "received_at",
+    "body_plaintext",
+    "has_attachments",
+    "thread_msg_count"
+  ]
+}

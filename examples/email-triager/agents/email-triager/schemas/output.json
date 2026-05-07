@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EmailTriagerOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "enum": ["support", "sales", "billing", "legal", "compliance", "recruiting", "spam", "other"]
+    },
+    "urgency": {
+      "enum": ["critical", "high", "normal", "low"]
+    },
+    "sentiment": {
+      "enum": ["positive", "neutral", "negative", "hostile"]
+    },
+    "suggested_queue": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requires_human_review": {
+      "type": "boolean"
+    },
+    "contains_pii": {
+      "type": "boolean"
+    },
+    "contains_security_signal": {
+      "type": "boolean"
+    },
+    "suggested_template_id": {
+      "type": ["string", "null"]
+    },
+    "reasoning": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "category",
+    "urgency",
+    "sentiment",
+    "suggested_queue",
+    "requires_human_review",
+    "contains_pii",
+    "contains_security_signal",
+    "suggested_template_id",
+    "reasoning"
+  ]
+}

@@ -104,7 +104,9 @@ For other CIs (GitLab CI, Jenkins, etc.) the recipe is the same — install agen
 ## Read more
 
 - [`docs/concepts.md`](docs/concepts.md) — what "an agent" means here and a worked end-to-end PR-risk-classifier example.
-- [`examples/pr-risk-classifier/`](examples/pr-risk-classifier/) — the runnable companion: `agentdiff.yaml`, prompt, schemas, eval cases, judge rubrics. Read it or copy it as a template for your own agent.
+- Runnable examples (read them or copy them as templates):
+  - [`examples/pr-risk-classifier/`](examples/pr-risk-classifier/) — DevSecOps PR triage by security risk.
+  - [`examples/email-triager/`](examples/email-triager/) — cross-industry inbound email classification, routing, and human-review escalation.
 - [`HANDOFF.md`](HANDOFF.md) — the full project plan and milestone status.
 
 ## What this is *not*
