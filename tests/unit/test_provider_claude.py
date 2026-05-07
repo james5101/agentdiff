@@ -66,7 +66,9 @@ def _make_provider(create_mock: AsyncMock) -> ClaudeProvider:
 
 
 async def test_invoke_returns_parsed_json_output(tmp_path: Path) -> None:
-    create = AsyncMock(return_value=_fake_message(text='{"intent": "greeting"}'))
+    # The provider prefills `{` and reattaches it before parsing, so
+    # the fake response carries only the post-`{` continuation.
+    create = AsyncMock(return_value=_fake_message(text='"intent": "greeting"}'))
     provider = _make_provider(create)
     agent = _make_agent(tmp_path)
 
@@ -77,13 +79,17 @@ async def test_invoke_returns_parsed_json_output(tmp_path: Path) -> None:
     assert result.usage == TokenUsage(input_tokens=20, output_tokens=10)
     assert result.latency_ms >= 0
 
-    # Verify the call shape: system prompt + user JSON content.
+    # Verify the call shape: system prompt + user JSON content + the
+    # `{` prefill on the assistant turn.
     create.assert_awaited_once()
     assert create.await_args is not None
     kwargs = create.await_args.kwargs
     assert kwargs["model"] == "claude-haiku-4-5-20251001"
     assert kwargs["system"] == "Classify the input."
-    assert kwargs["messages"] == [{"role": "user", "content": '{"text": "hello"}'}]
+    assert kwargs["messages"] == [
+        {"role": "user", "content": '{"text": "hello"}'},
+        {"role": "assistant", "content": "{"},
+    ]
 
 
 async def test_invoke_concatenates_multiple_text_blocks(tmp_path: Path) -> None:
@@ -91,7 +97,7 @@ async def test_invoke_concatenates_multiple_text_blocks(tmp_path: Path) -> None:
     create = AsyncMock(
         return_value=SimpleNamespace(
             content=[
-                SimpleNamespace(type="text", text='{"a":'),
+                SimpleNamespace(type="text", text='"a":'),
                 SimpleNamespace(type="text", text=" 1}"),
             ],
             usage=SimpleNamespace(input_tokens=5, output_tokens=3),
@@ -117,16 +123,6 @@ async def test_invoke_marks_invalid_json_as_error(tmp_path: Path) -> None:
     assert "not valid JSON" in result.error
     # Usage is still populated — we billed for those tokens.
     assert result.usage == TokenUsage(input_tokens=20, output_tokens=10)
-
-
-async def test_invoke_marks_non_object_json_as_error(tmp_path: Path) -> None:
-    create = AsyncMock(return_value=_fake_message(text="[1, 2, 3]"))
-    provider = _make_provider(create)
-
-    result = await provider.invoke(_make_agent(tmp_path), {})
-    assert result.output is None
-    assert result.error is not None
-    assert "expected an object" in result.error
 
 
 async def test_invoke_marks_empty_content_as_error(tmp_path: Path) -> None:

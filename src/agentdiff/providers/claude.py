@@ -35,6 +35,13 @@ _PRICE_TABLE: dict[str, tuple[Decimal, Decimal]] = {
 _MILLION = Decimal("1000000")
 _MAX_TOKENS = 4096
 
+# Anthropic prefill: by sending an assistant turn that ends mid-token,
+# the model is forced to continue from there. Prefilling "{" makes
+# the next character a JSON value, eliminating the "Sure, here's
+# your JSON:" preambles and markdown fences that otherwise wreck
+# json.loads(). The "{" is reattached client-side before parsing.
+_JSON_PREFILL = "{"
+
 
 class UnknownModelError(ValueError):
     """The configured model isn't in `_PRICE_TABLE`."""
@@ -75,7 +82,10 @@ class ClaudeProvider:
             resp = await self._client.messages.create(
                 model=self._model,
                 system=system_prompt,
-                messages=[{"role": "user", "content": user_content}],
+                messages=[
+                    {"role": "user", "content": user_content},
+                    {"role": "assistant", "content": _JSON_PREFILL},
+                ],
                 max_tokens=_MAX_TOKENS,
             )
         except anthropic.APIError as e:
@@ -101,6 +111,9 @@ class ClaudeProvider:
         )
 
         text = _extract_text(resp)
+        # Even an empty response is a JSON-parse failure once we add
+        # the prefill, but we still want to flag the underlying "no
+        # content" case explicitly for diagnostics.
         if text is None:
             return InvocationResult(
                 output=None,
@@ -109,23 +122,24 @@ class ClaudeProvider:
                 error="response contained no text content",
             )
 
+        full_text = _JSON_PREFILL + text
+
         try:
-            parsed: object = json.loads(text)
+            parsed: object = json.loads(full_text)
         except json.JSONDecodeError as e:
             return InvocationResult(
                 output=None,
                 usage=usage,
                 latency_ms=latency_ms,
-                error=f"agent output is not valid JSON: {e}",
+                error=(
+                    f"agent output is not valid JSON: {e}; "
+                    f"raw={full_text[:200]!r}"
+                ),
             )
 
-        if not isinstance(parsed, dict):
-            return InvocationResult(
-                output=None,
-                usage=usage,
-                latency_ms=latency_ms,
-                error=(f"agent output is JSON {type(parsed).__name__}, expected an object"),
-            )
+        # The prefill `{` guarantees that any successful parse is a
+        # JSON object; an array or scalar would have raised above.
+        assert isinstance(parsed, dict)
 
         return InvocationResult(
             output=parsed,
