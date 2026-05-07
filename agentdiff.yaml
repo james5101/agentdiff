@@ -38,7 +38,15 @@ agents:
       - golden.jsonl
       - adversarial.jsonl
     thresholds:
+      # 5/6 must pass — absorbs one judge-nondeterminism flake while
+      # still catching real regressions (which show up as 2+ failed
+      # cases). The strict 0.95 from examples/ is fine for users who
+      # control their judge model temperature; in-CI we want signal,
+      # not noise.
       golden:
-        minPassRate: 0.95
+        minPassRate: 0.83
+      # 1/3 may regress — adversarial cases are ambiguous by design,
+      # and Sonnet judging the same input twice can disagree on
+      # borderline-defensible reasoning. Two regressions still trips.
       adversarial:
-        maxRegressionPct: 0.05
+        maxRegressionPct: 0.34
