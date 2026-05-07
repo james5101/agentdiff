@@ -1,0 +1,20 @@
+name: agentdiff
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run agentdiff
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          pipx run --spec git+https://github.com/james5101/agentdiff.git agentdiff diff .

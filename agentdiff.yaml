@@ -1,0 +1,21 @@
+# Dogfood: agentdiff evaluating itself in CI.
+#
+# The agent under test is the intent-classifier fixture used by our
+# unit tests — small, fast, ~$0.001 per CI run. The .github/workflows/
+# agentdiff.yml workflow uses this config to gate PRs on behavioral
+# regressions.
+apiVersion: agentdiff/v1
+agents:
+  - name: intent-classifier
+    path: tests/fixtures/sample-repo/agents/intent-classifier
+    provider: claude
+    model: claude-haiku-4-5-20251001
+    prompt: prompt.md
+    schemas:
+      input: schemas/input.json
+      output: schemas/output.json
+    evals:
+      - golden.jsonl
+    thresholds:
+      golden:
+        minPassRate: 1.0
