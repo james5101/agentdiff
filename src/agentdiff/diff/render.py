@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from agentdiff.definition.schema import (
     BehavioralDiff,
+    CaseResult,
     SchemaDriftEntry,
     ThresholdViolation,
 )
@@ -114,6 +115,43 @@ def _pass_rate(cases: list) -> float:  # type: ignore[type-arg]
     if not cases:
         return 0.0
     return sum(1 for c in cases if c.passed) / len(cases)
+
+
+def render_case_details(diff: BehavioralDiff) -> str:
+    """Verbose per-case breakdown: pass/fail, judge score, reasoning.
+
+    Not suitable for PR comments — `render_diff` is the comment.
+    This is for human inspection during local development when you
+    want to see *why* a case got the score it got.
+    """
+    lines = ["### Case details", ""]
+    base_by_id = {c.case_id: c for c in diff.base_run.cases}
+    head_by_id = {c.case_id: c for c in diff.head_run.cases}
+    common = sorted(set(base_by_id) & set(head_by_id))
+
+    for case_id in common:
+        b = base_by_id[case_id]
+        h = head_by_id[case_id]
+        lines.append(f"**`{case_id}`**")
+        lines.append(_render_case_side("base", b))
+        lines.append(_render_case_side("head", h))
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_case_side(label: str, c: CaseResult) -> str:
+    mark = ":white_check_mark:" if c.passed else ":x:"
+    score_part = f" score={c.judge_score:.2f}" if c.judge_score is not None else ""
+    # Prefer judge_reasoning (set on every judged case, pass or fail);
+    # fall back to failure_reason for non-judge failures (timeout,
+    # schema violation, exact-match miss); finally, raw output for
+    # exact-match passes that have neither.
+    reasoning = c.judge_reasoning or c.failure_reason
+    if reasoning is None and c.invocation.output is not None:
+        reasoning = f"output={c.invocation.output!r}"
+    reasoning = reasoning or "(no reasoning)"
+    return f"- {label}: {mark}{score_part} — {reasoning}"
 
 
 def _delta_arrow(pct: float) -> str:

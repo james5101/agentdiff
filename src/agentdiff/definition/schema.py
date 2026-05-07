@@ -112,7 +112,15 @@ class InvocationResult(BaseModel):
 
 
 class CaseResult(BaseModel):
-    """Pass/fail outcome of one eval case against one agent version."""
+    """Pass/fail outcome of one eval case against one agent version.
+
+    `judge_reasoning` is set whenever the case was judged (regardless
+    of pass/fail) so the verbose CLI renderer can show why a case got
+    its score. `failure_reason` is set only on fail; for judged-fail
+    cases it duplicates the reasoning, but for non-judge failures
+    (timeout, schema violation, exact-match miss) it carries
+    different content.
+    """
 
     model_config = _STRICT_CONFIG
 
@@ -121,6 +129,7 @@ class CaseResult(BaseModel):
     passed: bool
     failure_reason: str | None = None
     judge_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    judge_reasoning: str | None = None
 
 
 class EvalRun(BaseModel):

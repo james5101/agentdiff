@@ -99,7 +99,7 @@ minor and patch dependency upgrades.
     Write-Host ">>> Running agentdiff diff-local..."
     Write-Host ""
 
-    & $uv run --project $repoRoot agentdiff diff-local $tmp $base $head
+    & $uv run --project $repoRoot agentdiff diff-local $tmp $base $head --show-reasoning
     $exitCode = $LASTEXITCODE
 }
 finally {

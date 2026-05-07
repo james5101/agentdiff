@@ -32,7 +32,7 @@ from agentdiff.definition.evals import load_eval_cases
 from agentdiff.definition.loader import load_agents
 from agentdiff.definition.schema import AgentDefinition, EvalRun
 from agentdiff.diff.compare import compare
-from agentdiff.diff.render import render_diff
+from agentdiff.diff.render import render_case_details, render_diff
 from agentdiff.eval.judge import Judger, find_rubric
 from agentdiff.eval.run import run_eval_set
 from agentdiff.providers.claude import ClaudeProvider
@@ -242,6 +242,7 @@ async def _diff_local_async(
     head_sha: str,
     settings: Settings,
     concurrency: int,
+    show_reasoning: bool,
 ) -> int:
     """Materialize base + head as worktrees, run evals on both, render diff.
 
@@ -323,6 +324,8 @@ async def _diff_local_async(
         if i > 0:
             _console.print("---")
         _console.print(render_diff(diff))
+        if show_reasoning:
+            _console.print(render_case_details(diff))
         if diff.threshold_violations:
             any_violation = True
 
@@ -355,6 +358,13 @@ def diff_local(
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Enable INFO-level diagnostic logs.")
     ] = False,
+    show_reasoning: Annotated[
+        bool,
+        typer.Option(
+            "--show-reasoning",
+            help="Print per-case judge reasoning after each diff (verbose, not PR-comment-shaped).",
+        ),
+    ] = False,
 ) -> None:
     """Run evals on two git refs and print a behavioral diff."""
     settings = Settings()
@@ -365,7 +375,14 @@ def diff_local(
 
     try:
         exit_code = asyncio.run(
-            _diff_local_async(repo_path, base_sha, head_sha, settings, effective_concurrency)
+            _diff_local_async(
+                repo_path,
+                base_sha,
+                head_sha,
+                settings,
+                effective_concurrency,
+                show_reasoning,
+            )
         )
     except DefinitionError as e:
         _err.print(f"[red]definition error:[/red] {e}")

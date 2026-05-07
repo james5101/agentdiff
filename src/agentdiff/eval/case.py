@@ -140,6 +140,7 @@ async def run_case(
             None if judgment.passed else (judgment.error or f"judge: {judgment.reasoning}")
         ),
         judge_score=judgment.score,
+        judge_reasoning=judgment.reasoning,
     )
 
 

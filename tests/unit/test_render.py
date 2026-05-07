@@ -13,16 +13,30 @@ from agentdiff.definition.schema import (
     ThresholdViolation,
     TokenUsage,
 )
-from agentdiff.diff.render import render_diff
+from agentdiff.diff.render import render_case_details, render_diff
 
 
-def _case(case_id: str, *, passed: bool) -> CaseResult:
+def _case(
+    case_id: str,
+    *,
+    passed: bool,
+    judge_score: float | None = None,
+    judge_reasoning: str | None = None,
+    failure_reason: str | None = None,
+) -> CaseResult:
     inv = InvocationResult(
         output={"intent": "x"},
         usage=TokenUsage(input_tokens=10, output_tokens=5),
         latency_ms=100,
     )
-    return CaseResult(case_id=case_id, invocation=inv, passed=passed)
+    return CaseResult(
+        case_id=case_id,
+        invocation=inv,
+        passed=passed,
+        judge_score=judge_score,
+        judge_reasoning=judge_reasoning,
+        failure_reason=failure_reason,
+    )
 
 
 def _run(
@@ -212,6 +226,50 @@ def test_render_omits_judge_cost_when_zero() -> None:
     head = _run(sha="bbbbbbb", cases=[_case("c1", passed=True)])
     out = render_diff(_diff(base=base, head=head))
     assert "Judge cost" not in out
+
+
+# ---------- render_case_details ----------
+
+
+def test_case_details_show_judge_reasoning_for_passing_cases() -> None:
+    base = _run(
+        sha="aaaaaaa",
+        cases=[_case("c1", passed=True, judge_score=0.85, judge_reasoning="defensible call")],
+    )
+    head = _run(
+        sha="bbbbbbb",
+        cases=[_case("c1", passed=True, judge_score=0.82, judge_reasoning="defensible call")],
+    )
+    out = render_case_details(_diff(base=base, head=head))
+
+    assert "`c1`" in out
+    assert "score=0.85" in out
+    assert "score=0.82" in out
+    assert "defensible call" in out
+
+
+def test_case_details_show_failure_reason_for_non_judge_failures() -> None:
+    """Timeout / schema-violation cases have failure_reason, not judge_reasoning."""
+    base = _run(
+        sha="aaaaaaa",
+        cases=[_case("c1", passed=False, failure_reason="timeout")],
+    )
+    head = _run(
+        sha="bbbbbbb",
+        cases=[_case("c1", passed=True, judge_score=0.9, judge_reasoning="ok")],
+    )
+    out = render_case_details(_diff(base=base, head=head))
+    assert "timeout" in out
+    assert "ok" in out
+
+
+def test_case_details_skip_cases_only_in_one_run() -> None:
+    base = _run(sha="aaaaaaa", cases=[_case("c1", passed=True)])
+    head = _run(sha="bbbbbbb", cases=[_case("c2", passed=True)])
+    out = render_case_details(_diff(base=base, head=head))
+    # Neither c1 nor c2 should appear since they aren't common to both.
+    assert "c1" not in out
+    assert "c2" not in out
 
 
 def test_render_pass_rate_format() -> None:
