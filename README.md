@@ -70,11 +70,9 @@ Reviewer sees, before merging: *the "engage all leads" change broke spam handlin
 
 What's deferred:
 
-- **A hosted GitHub bot** (eventual paid product) that posts the rendered diff as a PR comment + sets a check run automatically. The current CLI gets you the same merge-gating behavior via your CI's exit-code check — see [Milestone 5+](HANDOFF.md#milestone-5--hosted-bot-paid-product).
+- **A hosted GitHub bot** (eventual paid product) that posts the rendered diff as a PR comment + sets a check run automatically. The current CLI gets you the same merge-gating behavior via your CI's exit-code check.
 - OpenAI, Bedrock, or any non-Claude provider.
 - Persistence of historical metrics across runs.
-
-See [`HANDOFF.md`](HANDOFF.md) for the full build plan and what's deliberately out of scope.
 
 ## Try it locally
 
@@ -119,7 +117,6 @@ For other CIs (GitLab CI, Jenkins, etc.) the recipe is the same — install agen
 - Runnable examples (read them or copy them as templates):
   - [`examples/pr-risk-classifier/`](examples/pr-risk-classifier/) — DevSecOps PR triage by security risk.
   - [`examples/email-triager/`](examples/email-triager/) — cross-industry inbound email classification, routing, and human-review escalation.
-- [`HANDOFF.md`](HANDOFF.md) — the full project plan and milestone status.
 
 ## What this is *not*
 

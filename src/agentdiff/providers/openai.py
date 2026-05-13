@@ -12,7 +12,10 @@ from typing import Any
 
 from agentdiff.definition.schema import AgentDefinition, InvocationResult, TokenUsage
 
-_MESSAGE = "OpenAI support coming soon — see HANDOFF.md sec 3.2"
+_MESSAGE = (
+    "OpenAI support is not yet implemented. v1 only supports the Claude "
+    "provider; set `provider: claude` in your agentdiff.yaml."
+)
 
 
 class OpenAIProvider:
