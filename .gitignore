@@ -21,10 +21,12 @@ dist/
 venv/
 env/
 
-# IDE
+# IDE / AI assistants (local-only orientation files)
 .idea/
 .vscode/
 .claude/
+/CLAUDE.md
+/HANDOFF.md
 *.swp
 
 # OS

@@ -28,11 +28,11 @@ def _make_agent(tmp_path: Path) -> AgentDefinition:
 def test_openai_provider_invoke_raises(tmp_path: Path) -> None:
     provider = OpenAIProvider(model="gpt-x", api_key="ignored")
     agent = _make_agent(tmp_path)
-    with pytest.raises(NotImplementedError, match="OpenAI support coming soon"):
+    with pytest.raises(NotImplementedError, match="OpenAI support is not yet"):
         asyncio.run(provider.invoke(agent, {"x": 1}))
 
 
 def test_openai_provider_estimate_cost_raises() -> None:
     provider = OpenAIProvider(model="gpt-x", api_key="ignored")
-    with pytest.raises(NotImplementedError, match="OpenAI support coming soon"):
+    with pytest.raises(NotImplementedError, match="OpenAI support is not yet"):
         provider.estimate_cost(TokenUsage(input_tokens=1, output_tokens=1))
